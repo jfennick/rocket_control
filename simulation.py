@@ -1,14 +1,16 @@
 import time as timelib
 from typing import List
 
-from setup import acceleration_limit, dt, num_timesteps
+from setup import acceleration_limit, dt, num_timesteps, get_downranges, get_stage_time_intervals
 import rockets
 from rkt_types import Coords, Stage, Telemetry
 from utils import *
 
-def run(stages: List[Stage], telemetries: List[Telemetry], stage_time_intervals: List[Tuple[float, float]]) -> None:
+def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
     time_initial = timelib.time()
-    # Initialize controls
+
+    # Initialization
+    stage_time_intervals = get_stage_time_intervals(stages)
     controls = [stage.controls[0] for stage in stages]
 
     for timestep in range(num_timesteps - 1):
@@ -141,11 +143,13 @@ def run(stages: List[Stage], telemetries: List[Telemetry], stage_time_intervals:
                     telem.accelerations[timestep][0] = acceleration[0]
                     telem.accelerations[timestep][1] = acceleration[1]
 
-                    telem.velocities[timestep+1][0] = velocity[0] + acceleration[0]*dt
-                    telem.velocities[timestep+1][1] = velocity[1] + acceleration[1]*dt
+                    # For now, just use the Euler method.
+                    h = dt
+                    telem.velocities[timestep+1][0] = velocity[0] + h * acceleration[0]
+                    telem.velocities[timestep+1][1] = velocity[1] + h * acceleration[1]
 
-                    telem.positions[timestep+1][0] = position[0] + velocity[0]*dt
-                    telem.positions[timestep+1][1] = position[1] + velocity[1]*dt
+                    telem.positions[timestep+1][0] = position[0] + h * velocity[0]
+                    telem.positions[timestep+1][1] = position[1] + h * velocity[1]
 
                     telem.barometric_densities[timestep+1] = density
                     telem.dynamic_pressures[timestep+1] = force_drag_mag / (rockets.cross_sectional_area * standard_pressure) # convert to pressure in units of bar
@@ -153,14 +157,36 @@ def run(stages: List[Stage], telemetries: List[Telemetry], stage_time_intervals:
     time_final = timelib.time()
     #print('simulation time', time_final - time_initial)
 
-def score_telemetries(telemetries: List[Telemetry]) -> float:
-    telemetry = telemetries[-1] # Only care about final stage for now
+def score_telemetries(orbit: bool, telemetries: List[Telemetry]) -> float:
+    # Only care about final stage for orbit check and delta_velocity
+    telemetry = telemetries[-1]
+
+    downranges = [get_downranges(telemetry)[-1] for telemetry in telemetries]
+
+    # NOTE: The various score components will in general have different units.
+    # This is okay!
+    # NOTE: Use absolute value here instead of squaring the residual; otherwise,
+    # the return-to-launch-site penalty can outweigh the dV to orbit!
+    # Only care about initial stages for rtls penalty
+    rtls_penalty = sum([abs(d) for d in downranges[:-1]])
 
     # Check if we failed to reach orbit
     if telemetry.positions.size < num_timesteps:
-        return -math.inf
+        # If we have not reached orbit yet, 
+        # we do NOT want discontinuities in the objective function, because
+        # that will cause an 'activity cliff' and prevent the algorithm from
+        # improving failing solutions. Instead, return something that will
+        # monotonically increase as we get closer to reaching orbit, such as
+        # the downrange distance of the last stage.
+        if orbit:
+            return -math.inf
+        else:
+            # Divide by 100 so this is numerically smaller than the dV
+            # required to achieve orbit.
+            return downranges[-1] / 100
 
-    #downranges = get_downranges(telemetry)
     velocities = [magnitude(vx, vy) for vx, vy in telemetry.velocities]
     delta_velocity = max(velocities)
-    return delta_velocity
+
+    score = delta_velocity - rtls_penalty
+    return score

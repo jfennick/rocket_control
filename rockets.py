@@ -35,8 +35,9 @@ r2 = [Engine(650.0, 3200.0, 1.3)]
 r2vac = [Engine(650.0, 3560.0, 2.4)]
 
 superheavy = Stage(200000.0, 0.0, 3400000.0, 33*r2)
+superheavy.burn_time *= 0.85 # Save for boostback burn
 starship = Stage(100000.0, 120000.0, 1200000.0, 3*r2 + 6*r2vac)
-stages = [superheavy, starship]
+#stages = [superheavy, starship]
 
 # i.e. 12 hexagonal rings of turbofans, with the central turbofan + inner 3 rings removed.
 # This should give about 10% more thrust than superheavy, and about 5X more dry mass. (1425 Tons...)
@@ -51,7 +52,9 @@ superheavy_short = Stage(200000.0, 0.0, superheavy.mass_prop - turbostage.mass_p
 
 # In thrust we trust!
 superheavy_22 = Stage(200000.0, 0.0, 2200000.0, 33*r2 + 25*r2)
+superheavy_22.burn_time *= 0.91 # Save for boostback burn
 superheavy_12 = Stage(100000.0, 0.0, 1200000.0, 30*r2)
-#stages = [superheavy_22, superheavy_12, starship]
+superheavy_12.burn_time *= 0.77 # Save for boostback burn
+stages = [superheavy_22, superheavy_12, starship]
 superheavy_21 = Stage(200000.0, 0.0, superheavy_22.mass_prop - turbostage.mass_prop, 33*r2 + 25*r2)
 #stages = [turbostage, superheavy_21, superheavy_12, starship]

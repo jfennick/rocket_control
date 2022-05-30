@@ -63,10 +63,12 @@ class Stage():
         self.mass_payload = mass_payload
         self.mass_prop = mass_prop
         self.engines = engines
+        self.burn_time = mass_prop / sum([e.dmdt for e in engines]) 
         self.controls = controls
         
     mass_dry: float # kg
     mass_payload: float # kg
     mass_prop: float # kg
     engines: List[Engine]
+    burn_time: float # sec
     controls: List[Control] = []

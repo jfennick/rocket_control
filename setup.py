@@ -9,7 +9,7 @@ from utils import little_g, barometric_density, cart2pol
 # Simulation setup
 # Parameters
 dt = 0.1 # integration timestep, seconds
-time_limit = 10000.0 # seconds
+time_limit = 20000.0 # seconds
 num_timesteps = int(time_limit / dt)
 times = [t*dt for t in range(num_timesteps)]
 acceleration_limit = 4.0 * little_g
@@ -23,20 +23,13 @@ def get_initial_conditions(stages: List[Stage]) -> List[Telemetry]:
     telemetries = [Telemetry(num_timesteps, stage.mass_prop, position_0, velocity_0, acceleration_0, barometric_density(0.0), 0.0) for stage in stages]
     return telemetries
 
-def get_stage_sep_times(stages: List[Stage]) -> List[float]:
-    stage_sep_times = [stage.mass_prop / sum([e.dmdt for e in stage.engines]) for stage in stages]
-    stage_sep_times[0] = 0.85 * stage_sep_times[0] # Save for boostback burn
-    # TODO: consider acceleration limit (burnout times will be longer than the above full-throttle estimate)
-    #stage_sep_times[-1] = time_limit
+def get_stage_sep_times(stages: List[Stage]) -> List[float]: # , staging_delays: List[float]
+    stage_burn_times = [s.burn_time for s in stages]
+    stage_sep_times = list(np.cumsum([0.0] + stage_burn_times))
     return stage_sep_times
 
-def get_stage_sep_times_cumsum(stages: List[Stage]) -> List[float]:
-    stage_sep_times = get_stage_sep_times(stages)
-    stage_sep_times_cumsum = list(np.cumsum([0.0] + stage_sep_times))
-    return stage_sep_times_cumsum
-
 def get_stage_time_intervals(stages: List[Stage]) -> List[Tuple[float, float]]:
-    stage_sep_times_cumsum = get_stage_sep_times_cumsum(stages)
+    stage_sep_times_cumsum = get_stage_sep_times(stages)
     stage_time_intervals = list(zip(stage_sep_times_cumsum, stage_sep_times_cumsum[1:]))
     return stage_time_intervals
 
