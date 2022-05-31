@@ -117,8 +117,8 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
                 continue
 
             # copy so we can mutably update @ half-step
-            position = np.copy(telemetry.positions[timestep])
-            velocity = np.copy(telemetry.velocities[timestep])
+            pos0 = np.copy(telemetry.positions[timestep])
+            vel0 = np.copy(telemetry.velocities[timestep])
 
             #print('timestep, stage', timestep, i)
             # This is the total mass of all the (remaining) stages, excluding the remaining prop mass of the current stage.
@@ -127,7 +127,7 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
                 mass_stages += sum([s.mass_dry + s.mass_payload + s.mass_prop for s in stages[(i+1):]])
             mass_curr = mass_stages + telemetry.mass_prop_remaining
 
-            forces = get_forces(mass_stages, telemetry.mass_prop_remaining, i, time, stage, controls, position, velocity)
+            forces = get_forces(mass_stages, telemetry.mass_prop_remaining, i, time, stage, controls, pos0, vel0)
             forces_sum_x, forces_sum_y, force_drag_mag, excess_thrust_factor = forces
 
             prop_used = sum([e.dmdt for e in stage.engines]) * dt * excess_thrust_factor
@@ -135,40 +135,133 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
             # Determine acceleration
             a_x = forces_sum_x / mass_curr
             a_y = forces_sum_y / mass_curr
-            acceleration = Coords(a_x, a_y)
+            acc1 = Coords(a_x, a_y) # using pos0, vel0
 
-            midpoint = False
+            position = np.copy(telemetry.positions[timestep])
+            velocity = np.copy(telemetry.velocities[timestep])
+            h = dt
+            position[0] += h * velocity[0]
+            position[1] += h * velocity[1]
+
+            velocity[0] += h * acc1[0]
+            velocity[1] += h * acc1[1]
+
+            acceleration = acc1
+
+            midpoint = True
             if midpoint:
                 # See https://en.wikipedia.org/wiki/Midpoint_method
                 # Now calculate forces again using updated
                 # position, velocity, and mass_prop args (and time, if it matters)
 
-                # Estimate half-timestep velocities, positions using the Euler method.
+                # copy so we can mutably update @ half-step
+                pos1 = np.copy(telemetry.positions[timestep])
+                vel1 = np.copy(telemetry.velocities[timestep])
                 h = dt / 2
-                position[0] += h * velocity[0]
-                position[1] += h * velocity[1]
+                pos1[0] += h * vel1[0]
+                pos1[1] += h * vel1[1]
 
-                velocity[0] += h * acceleration[0]
-                velocity[1] += h * acceleration[1]
+                vel1[0] += h * acc1[0]
+                vel1[1] += h * acc1[1]
 
                 mass_curr = mass_stages + telemetry.mass_prop_remaining - prop_used / 2
-                forces = get_forces(mass_stages, telemetry.mass_prop_remaining - prop_used / 2, i, time + h, stage, controls, position, velocity)
+                forces = get_forces(mass_stages, telemetry.mass_prop_remaining - prop_used / 2, i, time + h, stage, controls, pos1, vel1)
                 forces_sum_x, forces_sum_y, force_drag_mag_, excess_thrust_factor_ = forces
 
                 # Determine acceleration
                 a_x = forces_sum_x / mass_curr
                 a_y = forces_sum_y / mass_curr
-                acceleration_mid = Coords(a_x, a_y)
+                acc2 = Coords(a_x, a_y) # using pos1, vel1
 
                 # There are a few timesteps where the two acceleration
                 # estimates drastically diverge. This appears to be around
                 # stage separation events. For now, simply check for errors
                 # and fallback to euler integration.
-                acc_mag_ratio = magnitude(acceleration[0], acceleration[1]) / magnitude(acceleration_mid[0], acceleration_mid[1])
+                acc_mag_ratio = magnitude(acceleration[0], acceleration[1]) / magnitude(acc2[0], acc2[1])
                 if abs(acc_mag_ratio - 1) < 0.02: # 2% tolerance
-                    acceleration = acceleration_mid
+                    position = np.copy(telemetry.positions[timestep])
+                    velocity = np.copy(telemetry.velocities[timestep])
+
+                    h = dt
+                    position[0] += h * velocity[0]
+                    position[1] += h * velocity[1]
+
+                    velocity[0] += h * acc2[0]
+                    velocity[1] += h * acc2[1]
+
+                    acceleration = acc2
                 else:
-                    print(timestep, round(time, 4), round(acc_mag_ratio, 6))
+                    print(i + 1, timestep, round(time, 4), round(acc_mag_ratio, 6))
+
+            runge_kutta_4 = True
+            if runge_kutta_4:
+                # See https://en.wikipedia.org/wiki/Runge–Kutta_methods
+                # Now calculate forces again using updated
+                # position, velocity, and mass_prop args (and time, if it matters)
+
+                # copy so we can mutably update @ half-step
+                pos2 = np.copy(telemetry.positions[timestep])
+                vel2 = np.copy(telemetry.velocities[timestep])
+
+                # Estimate half-timestep velocities, positions using the Euler method.
+                h = dt / 2
+                pos2[0] += h * vel2[0]
+                pos2[1] += h * vel2[1]
+
+                vel2[0] += h * acc2[0]
+                vel2[1] += h * acc2[1]
+
+                mass_curr = mass_stages + telemetry.mass_prop_remaining - prop_used / 2
+                forces = get_forces(mass_stages, telemetry.mass_prop_remaining - prop_used / 2, i, time + h, stage, controls, pos2, vel2)
+                forces_sum_x, forces_sum_y, force_drag_mag_, excess_thrust_factor_ = forces
+
+                # Determine acceleration
+                a_x = forces_sum_x / mass_curr
+                a_y = forces_sum_y / mass_curr
+                acc3 = Coords(a_x, a_y) # using pos2, vel2
+
+                # copy so we can mutably update @ next step
+                pos3 = np.copy(telemetry.positions[timestep])
+                vel3 = np.copy(telemetry.velocities[timestep])
+
+                # Estimate next timestep velocities, positions using the Euler method.
+                h = dt
+                pos3[0] += h * vel3[0]
+                pos3[1] += h * vel3[1]
+
+                vel3[0] += h * acc3[0]
+                vel3[1] += h * acc3[1]
+
+                mass_curr = mass_stages + telemetry.mass_prop_remaining - prop_used
+                forces = get_forces(mass_stages, telemetry.mass_prop_remaining - prop_used, i, time + h, stage, controls, pos3, vel3)
+                forces_sum_x, forces_sum_y, force_drag_mag_, excess_thrust_factor_ = forces
+
+                # Determine acceleration
+                a_x = forces_sum_x / mass_curr
+                a_y = forces_sum_y / mass_curr
+                acc4 = Coords(a_x, a_y) # using pos3, vel3
+
+                # Finally, perform a weighted average of the four estimates.
+                # This is essentially Simpson's rule.
+                vel_rk4_x = (vel0[0] + 2*vel1[0] + 2*vel2[0] + vel3[0]) / 6
+                vel_rk4_y = (vel0[1] + 2*vel1[1] + 2*vel2[1] + vel3[1]) / 6
+                pos_rk4 = Coords(pos0[0] + dt * vel_rk4_x, pos0[1] + dt * vel_rk4_y)
+                acc_rk4_x = (acc1[0] + 2*acc2[0] + 2*acc3[0] + acc4[0]) / 6
+                acc_rk4_y = (acc1[1] + 2*acc2[1] + 2*acc3[1] + acc4[1]) / 6
+                vel_rk4 = Coords(vel0[0] + dt * acc_rk4_x, vel0[1] + dt * acc_rk4_y)
+                acc_rk4 = Coords(acc_rk4_x, acc_rk4_y)
+
+                # There are a few timesteps where the two acceleration
+                # estimates drastically diverge. This appears to be around
+                # stage separation events. For now, simply check for errors
+                # and fallback to euler integration.
+                acc_mag_ratio = magnitude(acceleration[0], acceleration[1]) / magnitude(acc_rk4[0], acc_rk4[1])
+                if abs(acc_mag_ratio - 1) < 0.02: # 2% tolerance
+                    position = pos_rk4
+                    velocity = vel_rk4
+                    acceleration = acc_rk4
+                else:
+                    print(i + 1, timestep, round(time, 4), round(acc_mag_ratio, 6))
 
             # NOW mutably update prop after half-timestep
             telemetry.mass_prop_remaining -= prop_used
@@ -178,10 +271,6 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
             # overwrite the telemetries for stages >= i identically here.
             if time < t2:
                 telems = telemetries[i:]
-
-            # Now use the original position, velocity (not half-timestep)
-            position = telemetry.positions[timestep]
-            velocity = telemetry.velocities[timestep]
 
             for telem in telems:
                 radius = magnitude(position[0], position[1])
@@ -201,20 +290,18 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
                     telem.accelerations[timestep][0] = acceleration[0]
                     telem.accelerations[timestep][1] = acceleration[1]
 
-                    # For now, just use the Euler method.
-                    h = dt
-                    telem.velocities[timestep+1][0] = velocity[0] + h * acceleration[0]
-                    telem.velocities[timestep+1][1] = velocity[1] + h * acceleration[1]
+                    telem.velocities[timestep+1][0] = velocity[0]
+                    telem.velocities[timestep+1][1] = velocity[1]
 
-                    telem.positions[timestep+1][0] = position[0] + h * velocity[0]
-                    telem.positions[timestep+1][1] = position[1] + h * velocity[1]
+                    telem.positions[timestep+1][0] = position[0]
+                    telem.positions[timestep+1][1] = position[1]
 
                     density = barometric_density(altitude)
                     telem.barometric_densities[timestep+1] = density
                     telem.dynamic_pressures[timestep+1] = force_drag_mag / (rockets.cross_sectional_area * standard_pressure) # convert to pressure in units of bar
 
     time_final = timelib.time()
-    #print('simulation time', time_final - time_initial)
+    print('simulation time', time_final - time_initial)
 
 def score_telemetries(orbit: bool, telemetries: List[Telemetry]) -> float:
     # Only care about final stage for orbit check and delta_velocity
