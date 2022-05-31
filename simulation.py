@@ -3,8 +3,97 @@ from typing import List
 
 from setup import acceleration_limit, dt, num_timesteps, get_downranges, get_stage_time_intervals
 import rockets
-from rkt_types import Coords, Stage, Telemetry
+from rkt_types import Control, Coords, Stage, Telemetry
 from utils import *
+
+
+def get_forces(mass_stages: float, mass_prop_remaining: float,
+               i: int, time: float,
+               stage: Stage, controls: List[Control],
+               position: np.ndarray, velocity: np.ndarray) -> List[float]:
+
+    mass_curr = mass_stages + mass_prop_remaining
+    (pos_rho, pos_phi) = cart2pol(position[0], position[1])
+    radius = magnitude(position[0], position[1])
+
+    # The velocity of the atmosphere points in the direction of the derivative of position, i.e. + math.pi / 2
+    phi = pos_phi + math.pi / 2
+    (x_comp, y_comp) = pol2cart(1.0, phi)
+    atmosphere_vel_phi = tangental_velocity_earth*(pos_rho/radius_earth)
+    atm_vel_x = x_comp * atmosphere_vel_phi
+    atm_vel_y = y_comp * atmosphere_vel_phi
+    # NOTE: The speed used to calculate force_drag should be the NET
+    # speed of the stage w.r.t. the atmosphere, NOT just the stage itself!
+    # speed_stage = magnitude(velocity[0], velocity[1])
+    net_vel_x = velocity[0] - atm_vel_x
+    net_vel_y = velocity[1] - atm_vel_y
+    speed = magnitude(net_vel_x, net_vel_y)
+
+    altitude = radius - radius_earth
+
+    # Determine forces
+
+    # Force of gravity always points 'down', in the opposite direction to position (in polar coordinates), i.e. - math.pi
+    phi = pos_phi - math.pi
+    (x_comp, y_comp) = pol2cart(1.0, phi)
+    force_gravity_mag = force_gravity(mass_curr, altitude)
+    force_gravity_x = x_comp * force_gravity_mag
+    force_gravity_y = y_comp * force_gravity_mag
+
+    # Centripetal force always points 'up', in the same direction to position (in polar coordinates)
+    # Necessary in cartesian?
+
+    # Force of drag always points in the opposite direction to velocity, i.e. (-1) *
+    density = barometric_density(altitude)
+    force_drag_mag = force_drag(density, speed, 0.5, rockets.cross_sectional_area)
+    #force_drag_rho = force_drag_mag * vel_rho / speed
+    #force_drag_phi = force_drag_mag * vel_phi / speed
+    force_drag_x = 0 if speed == 0 else (-1) * force_drag_mag * net_vel_x / speed
+    force_drag_y = 0 if speed == 0 else (-1) * force_drag_mag * net_vel_y / speed
+
+    #forces_sum_rho = thrust_rho - force_gravity(mass_curr, altitude) - force_drag_rho
+    #forces_sum_phi = thrust_phi - force_drag_phi
+    #(forces_sum_x, forces_sum_y) = pol2cart(forces_sum_rho, forces_sum_phi)
+    forces_sum_x = force_gravity_x + force_drag_x
+    forces_sum_y = force_gravity_y + force_drag_y
+
+    excess_thrust_factor = 1.0
+    if mass_prop_remaining > 0:
+        # Update the control for the current stage, if necessary
+        if not (controls[i].t1 <= time < controls[i].t2):
+            for c in stage.controls:
+                if c.t1 <= time < c.t2:
+                    controls[i] = c
+                    #print(f'stage {i+1} updating', controls[i])
+                    break
+                # TODO: Check that there is always a valid control.
+
+        thrust_mag = sum([e.dmdt * e.velocity_exhaust for e in stage.engines])
+        thrust_mag = thrust_mag * controls[i].force_mag
+        # To find the thrust vector, add the position and control angles
+        phi = pos_phi + controls[i].force_phi
+        (x_comp, y_comp) = pol2cart(1.0, phi)
+        thrust_x = x_comp * thrust_mag
+        thrust_y = y_comp * thrust_mag
+
+        #forces_sum_mag = magnitude(forces_sum_rho, forces_sum_phi)
+        # Include all forces, or just thrust? Let's just use thrust.
+        # For the purpose of limiting structural loads we can ignore gravity,
+        # and the acceleration near maxQ is nowhere near this limit.
+        acceleration_mag = thrust_mag / mass_curr
+
+        excess_thrust_factor = 1.0
+        if acceleration_mag > acceleration_limit:
+            excess_thrust = (acceleration_mag - acceleration_limit) * mass_curr
+            excess_thrust_factor = (thrust_mag - excess_thrust) / thrust_mag
+            thrust_x = thrust_x * acceleration_limit / acceleration_mag
+            thrust_y = thrust_y * acceleration_limit / acceleration_mag
+
+        forces_sum_x += thrust_x
+        forces_sum_y += thrust_y
+
+    return [forces_sum_x, forces_sum_y, force_drag_mag, excess_thrust_factor]
+
 
 def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
     time_initial = timelib.time()
@@ -27,6 +116,10 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
             if not telemetry.update:
                 continue
 
+            # copy so we can mutably update @ half-step
+            position = np.copy(telemetry.positions[timestep])
+            velocity = np.copy(telemetry.velocities[timestep])
+
             #print('timestep, stage', timestep, i)
             # This is the total mass of all the (remaining) stages, excluding the remaining prop mass of the current stage.
             mass_stages = stage.mass_dry + stage.mass_payload
@@ -34,92 +127,51 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
                 mass_stages += sum([s.mass_dry + s.mass_payload + s.mass_prop for s in stages[(i+1):]])
             mass_curr = mass_stages + telemetry.mass_prop_remaining
 
-            # Get telemetry from previous timestep
-            position = telemetry.positions[timestep]
-            (pos_rho, pos_phi) = cart2pol(position[0], position[1])
-            radius = magnitude(position[0], position[1])
+            forces = get_forces(mass_stages, telemetry.mass_prop_remaining, i, time, stage, controls, position, velocity)
+            forces_sum_x, forces_sum_y, force_drag_mag, excess_thrust_factor = forces
 
-            # The velocity of the atmosphere points in the direction of the derivative of position, i.e. + math.pi / 2
-            phi = pos_phi + math.pi / 2
-            (x_comp, y_comp) = pol2cart(1.0, phi)
-            atmosphere_vel_phi = tangental_velocity_earth*(pos_rho/radius_earth)
-            atm_vel_x = x_comp * atmosphere_vel_phi
-            atm_vel_y = y_comp * atmosphere_vel_phi
-            velocity = telemetry.velocities[timestep]
-            # NOTE: The speed used to calculate force_drag should be the NET
-            # speed of the stage w.r.t. the atmosphere, NOT just the stage itself!
-            # speed_stage = magnitude(velocity[0], velocity[1])
-            net_vel_x = velocity[0] - atm_vel_x
-            net_vel_y = velocity[1] - atm_vel_y
-            speed = magnitude(net_vel_x, net_vel_y)
-
-            altitude = radius - radius_earth
-
-            # Determine forces
-
-            # Force of gravity always points 'down', in the opposite direction to position (in polar coordinates), i.e. - math.pi
-            phi = pos_phi - math.pi
-            (x_comp, y_comp) = pol2cart(1.0, phi)
-            force_gravity_mag = force_gravity(mass_curr, altitude)
-            force_gravity_x = x_comp * force_gravity_mag
-            force_gravity_y = y_comp * force_gravity_mag
-
-            # Centripetal force always points 'up', in the same direction to position (in polar coordinates)
-            # Necessary in cartesian?
-
-            # Force of drag always points in the opposite direction to velocity, i.e. (-1) *
-            density = barometric_density(altitude)
-            force_drag_mag = force_drag(density, speed, 0.5, rockets.cross_sectional_area)
-            #force_drag_rho = force_drag_mag * vel_rho / speed
-            #force_drag_phi = force_drag_mag * vel_phi / speed
-            force_drag_x = 0 if speed == 0 else (-1) * force_drag_mag * net_vel_x / speed
-            force_drag_y = 0 if speed == 0 else (-1) * force_drag_mag * net_vel_y / speed
-
-            #forces_sum_rho = thrust_rho - force_gravity(mass_curr, altitude) - force_drag_rho
-            #forces_sum_phi = thrust_phi - force_drag_phi
-            #(forces_sum_x, forces_sum_y) = pol2cart(forces_sum_rho, forces_sum_phi)
-            forces_sum_x = force_gravity_x + force_drag_x
-            forces_sum_y = force_gravity_y + force_drag_y
-
-            if telemetry.mass_prop_remaining > 0:
-                # Update the control for the current stage, if necessary
-                if not (controls[i].t1 <= time < controls[i].t2):
-                    for c in stage.controls:
-                        if c.t1 <= time < c.t2:
-                            controls[i] = c
-                            #print(f'stage {i+1} updating', controls[i])
-                            break
-                        # TODO: Check that there is always a valid control.
-
-                thrust_mag = sum([e.dmdt * e.velocity_exhaust for e in stages[i].engines])
-                thrust_mag = thrust_mag * controls[i].force_mag
-                # To find the thrust vector, add the position and control angles
-                phi = pos_phi + controls[i].force_phi
-                (x_comp, y_comp) = pol2cart(1.0, phi)
-                thrust_x = x_comp * thrust_mag
-                thrust_y = y_comp * thrust_mag
-
-                #forces_sum_mag = magnitude(forces_sum_rho, forces_sum_phi)
-                # Include all forces, or just thrust? Let's just use thrust.
-                # For the purpose of limiting structural loads we can ignore gravity,
-                # and the acceleration near maxQ is nowhere near this limit.
-                acceleration_mag = thrust_mag / mass_curr
-
-                excess_thrust_factor = 1.0
-                if acceleration_mag > acceleration_limit:
-                    excess_thrust = (acceleration_mag - acceleration_limit) * mass_curr
-                    excess_thrust_factor = (thrust_mag - excess_thrust) / thrust_mag
-                    thrust_x = thrust_x * acceleration_limit / acceleration_mag
-                    thrust_y = thrust_y * acceleration_limit / acceleration_mag
-
-                forces_sum_x += thrust_x
-                forces_sum_y += thrust_y
-                telemetry.mass_prop_remaining -= sum([e.dmdt for e in stage.engines]) * dt * excess_thrust_factor
+            prop_used = sum([e.dmdt for e in stage.engines]) * dt * excess_thrust_factor
 
             # Determine acceleration
             a_x = forces_sum_x / mass_curr
             a_y = forces_sum_y / mass_curr
             acceleration = Coords(a_x, a_y)
+
+            midpoint = False
+            if midpoint:
+                # See https://en.wikipedia.org/wiki/Midpoint_method
+                # Now calculate forces again using updated
+                # position, velocity, and mass_prop args (and time, if it matters)
+
+                # Estimate half-timestep velocities, positions using the Euler method.
+                h = dt / 2
+                position[0] += h * velocity[0]
+                position[1] += h * velocity[1]
+
+                velocity[0] += h * acceleration[0]
+                velocity[1] += h * acceleration[1]
+
+                mass_curr = mass_stages + telemetry.mass_prop_remaining - prop_used / 2
+                forces = get_forces(mass_stages, telemetry.mass_prop_remaining - prop_used / 2, i, time + h, stage, controls, position, velocity)
+                forces_sum_x, forces_sum_y, force_drag_mag_, excess_thrust_factor_ = forces
+
+                # Determine acceleration
+                a_x = forces_sum_x / mass_curr
+                a_y = forces_sum_y / mass_curr
+                acceleration_mid = Coords(a_x, a_y)
+
+                # There are a few timesteps where the two acceleration
+                # estimates drastically diverge. This appears to be around
+                # stage separation events. For now, simply check for errors
+                # and fallback to euler integration.
+                acc_mag_ratio = magnitude(acceleration[0], acceleration[1]) / magnitude(acceleration_mid[0], acceleration_mid[1])
+                if abs(acc_mag_ratio - 1) < 0.02: # 2% tolerance
+                    acceleration = acceleration_mid
+                else:
+                    print(timestep, round(time, 4), round(acc_mag_ratio, 6))
+
+            # NOW mutably update prop after half-timestep
+            telemetry.mass_prop_remaining -= prop_used
 
             telems = [telemetries[i]]
             # Before stage separation i, stages >= i move together, so
@@ -127,7 +179,13 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
             if time < t2:
                 telems = telemetries[i:]
 
+            # Now use the original position, velocity (not half-timestep)
+            position = telemetry.positions[timestep]
+            velocity = telemetry.velocities[timestep]
+
             for telem in telems:
+                radius = magnitude(position[0], position[1])
+                altitude = radius - radius_earth
                 if not telem.update:
                     pass
                 elif altitude < 0.0:
@@ -151,6 +209,7 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
                     telem.positions[timestep+1][0] = position[0] + h * velocity[0]
                     telem.positions[timestep+1][1] = position[1] + h * velocity[1]
 
+                    density = barometric_density(altitude)
                     telem.barometric_densities[timestep+1] = density
                     telem.dynamic_pressures[timestep+1] = force_drag_mag / (rockets.cross_sectional_area * standard_pressure) # convert to pressure in units of bar
 
