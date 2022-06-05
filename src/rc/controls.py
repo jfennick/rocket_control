@@ -3,8 +3,8 @@ import random
 from sys import maxsize
 from typing import List
 
-from rkt_types import Control
-import rockets
+from .rkt_types import Control
+from . import rockets
 
 sbt = [s.burn_time for s in rockets.stages]
 # Controls (piecewise constant, all times are in seconds)
@@ -21,8 +21,11 @@ up = [Control(0.0, uptime, 0.0)]
 over = [Control(uptime, 1000.0, math.pi / 2)]
 controls_up_over = up + over
 
-def piecewise_turn(init_time: float, init_angle: float, final_angle: float, numturns: int, turntime: float) -> List[Control]:
-    return [Control(init_time + r*turntime, init_time + (r+1)*turntime, init_angle + (final_angle - init_angle)*(r+1)/numturns) for r in range(numturns)]
+def piecewise_turn(init_time: float, init_angle: float, final_angle: float,
+                   numturns: int, turntime: float) -> List[Control]:
+    return [Control(init_time + r*turntime, init_time + (r+1)*turntime,
+                    init_angle + (final_angle - init_angle)*(r+1)/numturns)
+            for r in range(numturns)]
 
 gravity_turn1 = piecewise_turn(0.0, 0.0, math.pi/4, numturns1, turntime1)
 gravity_turn1a = piecewise_turn(0.0, 0.0, math.pi/6, numturns1, turntime1a)
@@ -52,11 +55,12 @@ def reduce_times(controls: List[Control]) -> List[Control]:
         time += delta_t
     return new_controls
 
-def perturb_controls_phi_random(controls: List[Control], scale: int,  index_min: int = 0, index_max: int = maxsize) -> List[Control]:
+def perturb_controls_phi_random(controls: List[Control], scale: int, index_min: int = 0,
+                                index_max: int = maxsize) -> List[Control]:
     new_controls = []
     for i, c in enumerate(controls):
         # Skip controls out of bounds
-        if not (index_min <= i < index_max):
+        if not index_min <= i < index_max:
             new_control = Control(c.t1, c.t2, c.force_phi, c.force_mag)
         else:
             delta_phi = (random.random() * 2 - 1) * (math.pi / 2) / scale

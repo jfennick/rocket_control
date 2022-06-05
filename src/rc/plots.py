@@ -6,10 +6,10 @@ import matplotlib
 from matplotlib import pyplot as plt
 from matplotlib import _pylab_helpers # type: ignore
 
-from constants import radius_earth
-from rkt_types import Control, Telemetry
-from setup import dt, times, get_downranges
-from utils import magnitude, cart2pol, little_g
+from .constants import radius_earth
+from .rkt_types import Control, Telemetry
+from .params import dt, times, get_downranges
+from .utils import magnitude, cart2pol, little_g
 
 
 def pause_no_show(interval: float) -> None:
@@ -17,7 +17,8 @@ def pause_no_show(interval: float) -> None:
     show() rudely brings the window to the foreground, which interrupts the user.
 
     Args:
-        interval (float): 
+        interval (float): Delay execution for a given number of seconds.
+        The argument may be a floating point number for subsecond precision.
     """
     manager = _pylab_helpers.Gcf.get_active()
     if manager is not None:
@@ -94,7 +95,8 @@ def update_plots(fig: matplotlib.pyplot.Figure, axes2d: List[List[matplotlib.pyp
         for sep_time in stage_sep_times[1:]:
             ax.vlines(sep_time, min(velocities), max(velocities), color='black')  # type: ignore
 
-        accelerations = [magnitude(ax, ay) / little_g for ax, ay in telemetry.accelerations] # Convert to multiple of little_g
+        # Convert to multiple of little_g
+        accelerations = [magnitude(ax, ay) / little_g for ax, ay in telemetry.accelerations]
         times_acc = times[:len(accelerations)]
         ax = axes2d[i][2]
         ax.ticklabel_format(style='sci', scilimits=(-2,3), axis='both')  # type: ignore
@@ -111,14 +113,15 @@ def update_plots(fig: matplotlib.pyplot.Figure, axes2d: List[List[matplotlib.pyp
         ax.scatter(stride(times_den), stride(densities), marker='o', s=(72./fig.dpi)**2)  # type: ignore
         ax.set_xlabel('time (seconds)')
         ax.set_ylabel('density (kg/m^3)')
-        for sep_time in stage_sep_times_cumsum[1:]:
-            ax.vlines(sep_time, min(telemetry.barometric_densities), max(telemetry.barometric_densities), color='black')  # type: ignore"""
+        for sep_time in stage_sep_times[1:]:
+            ax.vlines(sep_time, min(telemetry.barometric_densities), max(telemetry.barometric_densities),
+                      color='black')  # type: ignore"""
 
         control_phis = []
         for c in controls[i]:
             num_steps_c = int((c.t2 - c.t1) / dt)
             phi_deg = c.force_phi * (180 / math.pi)
-            for i_ in range(num_steps_c):
+            for j in range(num_steps_c):
                 control_phis.append(phi_deg)
         control_phis = control_phis[:telemetry.positions.size]
         times_den = times[:len(control_phis)]
@@ -130,8 +133,8 @@ def update_plots(fig: matplotlib.pyplot.Figure, axes2d: List[List[matplotlib.pyp
         for sep_time in stage_sep_times[1:]:
             ax.vlines(sep_time, min(control_phis), max(control_phis), color='black')  # type: ignore
 
-        def find_maxQ_time(times: List[float], dynamic_pressures: List[float]) -> float:
-            indexed_pressures = list(zip(times, dynamic_pressures))
+        def find_maxq_time(times_: List[float], dynamic_pressures: List[float]) -> float:
+            indexed_pressures = list(zip(times_, dynamic_pressures))
             indexed_pressures.sort(key=lambda x: x[1])
             return indexed_pressures[-1][0]
 
@@ -145,8 +148,9 @@ def update_plots(fig: matplotlib.pyplot.Figure, axes2d: List[List[matplotlib.pyp
         for sep_time in stage_sep_times[1:]:
             ax.vlines(sep_time, min(pressures), max(pressures), color='black')  # type: ignore
         # Plot maxQ
-        maxQ_time = find_maxQ_time(times_pre, pressures)
-        ax.vlines(maxQ_time, min(telemetry.dynamic_pressures), max(telemetry.dynamic_pressures), color='red')  # type: ignore
+        maxq_time = find_maxq_time(times_pre, pressures)
+        ax.vlines(maxq_time, min(telemetry.dynamic_pressures), max(telemetry.dynamic_pressures),
+                  color='red')  # type: ignore
 
         ax = axes2d[i][5]
         ax.ticklabel_format(style='sci', scilimits=(-2,3), axis='both')  # type: ignore

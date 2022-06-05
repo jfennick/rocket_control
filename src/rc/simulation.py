@@ -1,10 +1,14 @@
+import math
 import time as timelib
 from typing import List
 
-from setup import acceleration_limit, dt, num_timesteps, get_downranges, get_stage_time_intervals
-import rockets
-from rkt_types import Control, Coords, Stage, Telemetry
-from utils import *
+import numpy as np
+
+from .constants import tangental_velocity_earth, radius_earth, standard_pressure
+from .params import acceleration_limit, dt, num_timesteps, get_downranges, get_stage_time_intervals
+from . import rockets
+from .rkt_types import Control, Coords, Stage, Telemetry
+from .utils import barometric_density, cart2pol, force_drag, force_gravity, pol2cart, magnitude
 
 
 def get_forces(mass_stages: float, mass_prop_remaining: float,
@@ -16,7 +20,8 @@ def get_forces(mass_stages: float, mass_prop_remaining: float,
     (pos_rho, pos_phi) = cart2pol(position[0], position[1])
     radius = magnitude(position[0], position[1])
 
-    # The velocity of the atmosphere points in the direction of the derivative of position, i.e. + math.pi / 2
+    # The velocity of the atmosphere points
+    # in the direction of the derivative of position, i.e. + math.pi / 2
     phi = pos_phi + math.pi / 2
     (x_comp, y_comp) = pol2cart(1.0, phi)
     atmosphere_vel_phi = tangental_velocity_earth*(pos_rho/radius_earth)
@@ -33,17 +38,20 @@ def get_forces(mass_stages: float, mass_prop_remaining: float,
 
     # Determine forces
 
-    # Force of gravity always points 'down', in the opposite direction to position (in polar coordinates), i.e. - math.pi
+    # Force of gravity always points 'down',
+    # in the opposite direction to position (in polar coordinates), i.e. - math.pi
     phi = pos_phi - math.pi
     (x_comp, y_comp) = pol2cart(1.0, phi)
     force_gravity_mag = force_gravity(mass_curr, altitude)
     force_gravity_x = x_comp * force_gravity_mag
     force_gravity_y = y_comp * force_gravity_mag
 
-    # Centripetal force always points 'up', in the same direction to position (in polar coordinates)
+    # Centripetal force always points 'up',
+    # in the same direction to position (in polar coordinates)
     # Necessary in cartesian?
 
-    # Force of drag always points in the opposite direction to velocity, i.e. (-1) *
+    # Force of drag always points
+    # in the opposite direction to velocity, i.e. (-1) *
     density = barometric_density(altitude)
     force_drag_mag = force_drag(density, speed, 0.5, rockets.cross_sectional_area)
     #force_drag_rho = force_drag_mag * vel_rho / speed
@@ -60,7 +68,7 @@ def get_forces(mass_stages: float, mass_prop_remaining: float,
     excess_thrust_factor = 1.0
     if mass_prop_remaining > 0:
         # Update the control for the current stage, if necessary
-        if not (controls[i].t1 <= time < controls[i].t2):
+        if not controls[i].t1 <= time < controls[i].t2:
             for c in stage.controls:
                 if c.t1 <= time < c.t2:
                     controls[i] = c
@@ -121,7 +129,8 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
             vel0 = np.copy(telemetry.velocities[timestep])
 
             #print('timestep, stage', timestep, i)
-            # This is the total mass of all the (remaining) stages, excluding the remaining prop mass of the current stage.
+            # This is the total mass of all the (remaining) stages,
+            # excluding the remaining prop mass of the current stage.
             mass_stages = stage.mass_dry + stage.mass_payload
             if time < t2:
                 mass_stages += sum([s.mass_dry + s.mass_payload + s.mass_prop for s in stages[(i+1):]])
@@ -165,7 +174,8 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
                 vel1[1] += h * acc1[1]
 
                 mass_curr = mass_stages + telemetry.mass_prop_remaining - prop_used / 2
-                forces = get_forces(mass_stages, telemetry.mass_prop_remaining - prop_used / 2, i, time + h, stage, controls, pos1, vel1)
+                forces = get_forces(mass_stages, telemetry.mass_prop_remaining - prop_used / 2,
+                                    i, time + h, stage, controls, pos1, vel1)
                 forces_sum_x, forces_sum_y, force_drag_mag_, excess_thrust_factor_ = forces
 
                 # Determine acceleration
@@ -212,7 +222,8 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
                 vel2[1] += h * acc2[1]
 
                 mass_curr = mass_stages + telemetry.mass_prop_remaining - prop_used / 2
-                forces = get_forces(mass_stages, telemetry.mass_prop_remaining - prop_used / 2, i, time + h, stage, controls, pos2, vel2)
+                forces = get_forces(mass_stages, telemetry.mass_prop_remaining - prop_used / 2,
+                                    i, time + h, stage, controls, pos2, vel2)
                 forces_sum_x, forces_sum_y, force_drag_mag_, excess_thrust_factor_ = forces
 
                 # Determine acceleration
@@ -233,7 +244,8 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
                 vel3[1] += h * acc3[1]
 
                 mass_curr = mass_stages + telemetry.mass_prop_remaining - prop_used
-                forces = get_forces(mass_stages, telemetry.mass_prop_remaining - prop_used, i, time + h, stage, controls, pos3, vel3)
+                forces = get_forces(mass_stages, telemetry.mass_prop_remaining - prop_used,
+                                    i, time + h, stage, controls, pos3, vel3)
                 forces_sum_x, forces_sum_y, force_drag_mag_, excess_thrust_factor_ = forces
 
                 # Determine acceleration
@@ -257,8 +269,10 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
                 # and fallback to euler integration.
                 acc_mag_ratio = magnitude(acceleration[0], acceleration[1]) / magnitude(acc_rk4[0], acc_rk4[1])
                 if abs(acc_mag_ratio - 1) < 0.02: # 2% tolerance
-                    position = pos_rk4
-                    velocity = vel_rk4
+                    position[0] = pos_rk4[0]
+                    position[1] = pos_rk4[1]
+                    velocity[0] = vel_rk4[0]
+                    velocity[1] = vel_rk4[1]
                     acceleration = acc_rk4
                 else:
                     print(i + 1, timestep, round(time, 4), round(acc_mag_ratio, 6))
@@ -298,7 +312,9 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
 
                     density = barometric_density(altitude)
                     telem.barometric_densities[timestep+1] = density
-                    telem.dynamic_pressures[timestep+1] = force_drag_mag / (rockets.cross_sectional_area * standard_pressure) # convert to pressure in units of bar
+                     # convert to pressure in units of bar
+                    force_tot_bar = (rockets.cross_sectional_area * standard_pressure)
+                    telem.dynamic_pressures[timestep+1] = force_drag_mag / force_tot_bar
 
     time_final = timelib.time()
     print('simulation time', time_final - time_initial)
@@ -318,7 +334,7 @@ def score_telemetries(orbit: bool, telemetries: List[Telemetry]) -> float:
 
     # Check if we failed to reach orbit
     if telemetry.positions.size < num_timesteps:
-        # If we have not reached orbit yet, 
+        # If we have not reached orbit yet,
         # we do NOT want discontinuities in the objective function, because
         # that will cause an 'activity cliff' and prevent the algorithm from
         # improving failing solutions. Instead, return something that will

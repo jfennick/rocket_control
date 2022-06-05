@@ -1,7 +1,7 @@
 import math
 
-from rkt_types import Engine, Stage
-from utils import little_g
+from .rkt_types import Engine, Stage
+from .utils import little_g
 
 # CF6-50 Turbofan
 CF6_mass = 3960 # kg

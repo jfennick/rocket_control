@@ -1,0 +1,6 @@
+{
+    "mypy.dmypyExecutable": "~/opt/anaconda3/envs/rocket/bin/dmypy",
+    "python.linting.mypyEnabled": true,
+    "python.linting.pylintEnabled": true,
+    "gitlens.hovers.enabled": false
+}

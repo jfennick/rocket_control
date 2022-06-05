@@ -1,8 +1,9 @@
 import math
-import numpy as np
 from typing import Tuple
 
-from constants import *
+import numpy as np
+
+from .constants import big_G, mass_earth, radius_earth, molar_mass_air, ideal_gas_constant
 
 def magnitude(x: float, y: float) -> float:
     return math.sqrt(x ** 2 + y ** 2)
@@ -26,7 +27,7 @@ little_g = force_gravity(1.0, 0.0) # 9.8 m/s^2
 def force_drag(density: float, speed: float, drag_coefficient: float, cross_sectional_area: float) -> float:
     # 1/2 rho v^2 c A
     return 0.5 * density * (speed ** 2) * drag_coefficient * cross_sectional_area
-    
+
 def barometric_density(altitude: float) -> float:
     # See https://en.wikipedia.org/wiki/Barometric_formula#Density_equations
     # altitude (m), density (kg/m^3), temperature (K), temperature lapse rate (K/m)

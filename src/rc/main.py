@@ -4,11 +4,11 @@ import random
 
 from matplotlib import pyplot as plt
 
-import controls as ctrl
-import plots
-import rockets
-import setup
-import simulation
+from . import controls as ctrl
+from . import plots
+from . import rockets
+from . import params
+from . import simulation
 
 def main() -> None:
     #print('acceleration due to gravity', little_g)
@@ -28,7 +28,7 @@ def main() -> None:
 
     controls_copy = [copy.deepcopy(stage.controls) for stage in stages]
     burn_times_copy = [s.burn_time for s in stages]
-    max_iters = 25
+    max_iters = 1
 
     nrows: int = len(stages)
     ncols: int = 7
@@ -36,14 +36,14 @@ def main() -> None:
 
     orbit = False # Has any solution reached orbit yet?
     for i in range(1, 1 + max_iters):
-        telemetries = setup.get_initial_conditions(stages)
+        telemetries = params.get_initial_conditions(stages)
 
         simulation.run(stages, telemetries)
 
         score = simulation.score_telemetries(orbit, telemetries)
 
         # Did we just reach orbit?
-        orbit_i = not telemetries[-1].positions.size < setup.num_timesteps
+        orbit_i = not telemetries[-1].positions.size < params.num_timesteps
         if orbit_i:
             orbit = True
 
@@ -51,7 +51,7 @@ def main() -> None:
         if score > score_best:
             score_best = score
 
-            stage_sep_times = setup.get_stage_sep_times(stages)
+            stage_sep_times = params.get_stage_sep_times(stages)
             plots.update_plots(fig, axes2d, controls_copy, telemetries, stage_sep_times)
             # NOTE: Do NOT use time.sleep(1.0) here!
             # It does NOT restart the GUI event loop!
