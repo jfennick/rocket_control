@@ -1,0 +1,18 @@
+[package]
+name = "rocket_control"
+version = "0.0.1"
+authors = ["Jake Fennick <jake.fennick@gmail.com>"]
+edition = "2021"
+
+[dependencies]
+rand = "*"
+# cute
+# soak
+
+[lib]
+name = "constants"
+crate-type = ["cdylib"]
+
+[dependencies.cpython]
+version = "0.5"
+features = ["extension-module"]

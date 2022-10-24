@@ -4,9 +4,13 @@ import random
 
 from matplotlib import pyplot as plt
 
-from . import controls as ctrl
+from .controls import (up, gravity_turn1, gravity_turn1a, gravity_turn1b,
+                      staging_delay, boostback, gravity_turn2, over12,
+                      reduce_times, perturb_controls_phi_random)
 from . import plots
-from . import rockets
+from .rockets import (r2, starship, superheavy, turbostage, superheavy_t,
+                     superheavy_a, superheavy_b, superheavy_a_t, get_burn_time)
+
 from . import params
 from . import simulation
 
@@ -15,14 +19,29 @@ def main() -> None:
     #print('tangental velocity due to earth\'s rotation', tangental_velocity_earth)
     #print('num_engines_exterior', num_engines_exterior(9.0, 1.3))
 
-    rockets.starship.controls = ctrl.reduce_times(ctrl.controls_stage2)
-    rockets.superheavy.controls = ctrl.reduce_times(ctrl.controls_stage1)
-    rockets.superheavy_short.controls = ctrl.reduce_times(ctrl.controls_stage1)
-    rockets.turbostage.controls = ctrl.reduce_times(ctrl.controls_stage1)
-    rockets.superheavy_22.controls = ctrl.reduce_times(ctrl.controls_stage1a)
-    rockets.superheavy_12.controls = ctrl.reduce_times(ctrl.controls_stage1b)
-    rockets.superheavy_21.controls = ctrl.reduce_times(ctrl.controls_stage1)
-    stages = rockets.stages
+    # Our default controls depend on some information in the stages, but the
+    # stages also depend on the controls (i.e. the controls are stored in the stages.)
+    # There is some slight duplication of engines and prop mass here, but it
+    # allows us to define the stages functionally, without mutation.
+    burntime = 0.85 * get_burn_time(3400000.0, 33*r2)
+    burntime_a = 0.91 * get_burn_time(2200000.0, 33*r2 + 25*r2)
+    burntime_b = 0.77 * get_burn_time(1200000.0, 30*r2)
+    burntime_t = 0.85 * get_burn_time(3400000.0 - 50000.0, 33*r2)
+    burntime_a_t = 0.91 * get_burn_time(2200000.0 - 50000.0, 33*r2 + 25*r2)
+
+    ctrls_1 = reduce_times(up + gravity_turn1(burntime) + staging_delay + boostback)
+    ctrls_1a = reduce_times(up + gravity_turn1a(burntime_a) + staging_delay + boostback)
+    ctrls_1b = reduce_times(up + gravity_turn1a(burntime_a) + staging_delay + gravity_turn1b(burntime_b) + staging_delay + boostback)
+    # ctrls_t = ...
+    # ctrls_a_t = ...
+
+    #ctrls_2 = reduce_times(up + gravity_turn1(burntime1) + staging_delay + gravity_turn2 + over12)
+    ctrls_2 = reduce_times(up + gravity_turn1a(burntime_a) + staging_delay + gravity_turn1b(burntime_b) + staging_delay + gravity_turn2 + over12)
+
+    #stages = [superheavy(ctrls_1), starship(ctrls_2)]
+    #stages = [turbostage(ctrls_1), superheavy_t(ctrls_t), starship(ctrls_2)]
+    stages = [superheavy_a(ctrls_1a), superheavy_b(ctrls_1b), starship(ctrls_2)]
+    #stages = [turbostage(ctrls_1), superheavy_a_t(ctrls_a_t), superheavy_b(ctls_b), starship(ctrls_2)]
 
     score_best = -math.inf
 
@@ -73,7 +92,7 @@ def main() -> None:
 
         # Perturb the controls for the next iteration
         for stage in stages:
-            stage.controls = ctrl.perturb_controls_phi_random(stage.controls, 100, 1)
+            stage.controls = perturb_controls_phi_random(stage.controls, 100, 1)
         # Perturb the boostback burns for the next iteration
         for stage in stages[:-1]: # Exclude the last stage
             delta_time = 1 + (random.random() * 2 - 1) / 1000

@@ -4,7 +4,7 @@ from typing import List
 
 import numpy as np
 
-from .constants import tangental_velocity_earth, radius_earth, standard_pressure
+from .constants import tangental_velocity_earth, radius_earth, standard_pressure, speed_of_sound
 from .params import acceleration_limit, dt, num_timesteps, get_downranges, get_stage_time_intervals
 from . import rockets
 from .rkt_types import Control, Coords, Stage, Telemetry
@@ -53,7 +53,8 @@ def get_forces(mass_stages: float, mass_prop_remaining: float,
     # Force of drag always points
     # in the opposite direction to velocity, i.e. (-1) *
     density = barometric_density(altitude)
-    force_drag_mag = force_drag(density, speed, 0.5, rockets.cross_sectional_area)
+    drag_coef = 0.05 if speed < speed_of_sound else 0.15
+    force_drag_mag = force_drag(density, speed, drag_coef, rockets.cross_sectional_area)
     #force_drag_rho = force_drag_mag * vel_rho / speed
     #force_drag_phi = force_drag_mag * vel_phi / speed
     force_drag_x = 0 if speed == 0 else (-1) * force_drag_mag * net_vel_x / speed

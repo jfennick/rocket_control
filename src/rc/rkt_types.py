@@ -6,6 +6,7 @@ class Engine(NamedTuple):
     dmdt            : float # kg/s
     velocity_exhaust: float # m/s, in rocket frame
     diameter        : float # m
+    mass            : float # kg
 
 class Coords(NamedTuple):
     x: float
@@ -58,17 +59,18 @@ class Stage():
                  mass_payload: float,
                  mass_prop: float,
                  engines: List[Engine],
-                 controls: List[Control] = []) -> None:
+                 burn_time: float,
+                 controls: List[Control]) -> None:
         self.mass_dry = mass_dry
         self.mass_payload = mass_payload
         self.mass_prop = mass_prop
         self.engines = engines
-        self.burn_time = mass_prop / sum([e.dmdt for e in engines])
+        self.burn_time = burn_time
         self.controls = controls
 
-    mass_dry: float # kg
-    mass_payload: float # kg
-    mass_prop: float # kg
-    engines: List[Engine]
-    burn_time: float # sec
-    controls: List[Control] = []
+    #mass_dry: float # kg
+    #mass_payload: float # kg
+    #mass_prop: float # kg
+    #engines: List[Engine]
+    #burn_time: float # sec
+    #controls: List[Control]
