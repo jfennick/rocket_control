@@ -5,7 +5,7 @@ from typing import List
 import numpy as np
 
 from .constants import tangental_velocity_earth, radius_earth, standard_pressure, speed_of_sound
-from .params import acceleration_limit, dt, num_timesteps, get_downranges, get_stage_time_intervals
+from .params import acceleration_limit, dt, num_timesteps, get_downranges, get_initial_conditions, get_stage_time_intervals
 from . import rockets
 from .rkt_types import Control, Coords, Stage, Telemetry
 from .utils import barometric_density, cart2pol, force_drag, force_gravity, pol2cart, magnitude
@@ -22,7 +22,7 @@ def get_forces(mass_stages: float, mass_prop_remaining: float,
 
     # The velocity of the atmosphere points
     # in the direction of the derivative of position, i.e. + math.pi / 2
-    phi = pos_phi + math.pi / 2
+    phi = pos_phi + math.pi / 2.0
     (x_comp, y_comp) = pol2cart(1.0, phi)
     atmosphere_vel_phi = tangental_velocity_earth*(pos_rho/radius_earth)
     atm_vel_x = x_comp * atmosphere_vel_phi
@@ -55,10 +55,11 @@ def get_forces(mass_stages: float, mass_prop_remaining: float,
     density = barometric_density(altitude)
     drag_coef = 0.05 if speed < speed_of_sound else 0.15
     force_drag_mag = force_drag(density, speed, drag_coef, rockets.cross_sectional_area)
+    #(vel_rho, vel_phi) = cart2pol(velocity[0], velocity[1])
     #force_drag_rho = force_drag_mag * vel_rho / speed
     #force_drag_phi = force_drag_mag * vel_phi / speed
-    force_drag_x = 0 if speed == 0 else (-1) * force_drag_mag * net_vel_x / speed
-    force_drag_y = 0 if speed == 0 else (-1) * force_drag_mag * net_vel_y / speed
+    force_drag_x = 0.0 if speed == 0.0 else (-1.0) * force_drag_mag * net_vel_x / speed
+    force_drag_y = 0.0 if speed == 0.0 else (-1.0) * force_drag_mag * net_vel_y / speed
 
     #forces_sum_rho = thrust_rho - force_gravity(mass_curr, altitude) - force_drag_rho
     #forces_sum_phi = thrust_phi - force_drag_phi
@@ -67,7 +68,7 @@ def get_forces(mass_stages: float, mass_prop_remaining: float,
     forces_sum_y = force_gravity_y + force_drag_y
 
     excess_thrust_factor = 1.0
-    if mass_prop_remaining > 0:
+    if mass_prop_remaining > 0.0:
         # Update the control for the current stage, if necessary
         if not controls[i].t1 <= time < controls[i].t2:
             for c in stage.controls:
@@ -104,12 +105,13 @@ def get_forces(mass_stages: float, mass_prop_remaining: float,
     return [forces_sum_x, forces_sum_y, force_drag_mag, excess_thrust_factor]
 
 
-def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
+def run(stages: List[Stage]) -> List[Telemetry]:
     time_initial = timelib.time()
 
     # Initialization
     stage_time_intervals = get_stage_time_intervals(stages)
     controls = [stage.controls[0] for stage in stages]
+    telemetries = get_initial_conditions(stages)
 
     for timestep in range(num_timesteps - 1):
         time = timestep * dt
@@ -167,15 +169,15 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
                 # copy so we can mutably update @ half-step
                 pos1 = np.copy(telemetry.positions[timestep])
                 vel1 = np.copy(telemetry.velocities[timestep])
-                h = dt / 2
+                h = dt / 2.0
                 pos1[0] += h * vel1[0]
                 pos1[1] += h * vel1[1]
 
                 vel1[0] += h * acc1[0]
                 vel1[1] += h * acc1[1]
 
-                mass_curr = mass_stages + telemetry.mass_prop_remaining - prop_used / 2
-                forces = get_forces(mass_stages, telemetry.mass_prop_remaining - prop_used / 2,
+                mass_curr = mass_stages + telemetry.mass_prop_remaining - prop_used / 2.0
+                forces = get_forces(mass_stages, telemetry.mass_prop_remaining - prop_used / 2.0,
                                     i, time + h, stage, controls, pos1, vel1)
                 forces_sum_x, forces_sum_y, force_drag_mag_, excess_thrust_factor_ = forces
 
@@ -189,7 +191,7 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
                 # stage separation events. For now, simply check for errors
                 # and fallback to euler integration.
                 acc_mag_ratio = magnitude(acceleration[0], acceleration[1]) / magnitude(acc2[0], acc2[1])
-                if abs(acc_mag_ratio - 1) < 0.02: # 2% tolerance
+                if abs(acc_mag_ratio - 1.0) < 0.02: # 2% tolerance
                     position = np.copy(telemetry.positions[timestep])
                     velocity = np.copy(telemetry.velocities[timestep])
 
@@ -202,7 +204,7 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
 
                     acceleration = acc2
                 else:
-                    print(i + 1, timestep, round(time, 4), round(acc_mag_ratio, 6))
+                    pass #print(i + 1, timestep, round(time, 4), round(acc_mag_ratio, 6))
 
             runge_kutta_4 = True
             if runge_kutta_4:
@@ -215,15 +217,15 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
                 vel2 = np.copy(telemetry.velocities[timestep])
 
                 # Estimate half-timestep velocities, positions using the Euler method.
-                h = dt / 2
+                h = dt / 2.0
                 pos2[0] += h * vel2[0]
                 pos2[1] += h * vel2[1]
 
                 vel2[0] += h * acc2[0]
                 vel2[1] += h * acc2[1]
 
-                mass_curr = mass_stages + telemetry.mass_prop_remaining - prop_used / 2
-                forces = get_forces(mass_stages, telemetry.mass_prop_remaining - prop_used / 2,
+                mass_curr = mass_stages + telemetry.mass_prop_remaining - prop_used / 2.0
+                forces = get_forces(mass_stages, telemetry.mass_prop_remaining - prop_used / 2.0,
                                     i, time + h, stage, controls, pos2, vel2)
                 forces_sum_x, forces_sum_y, force_drag_mag_, excess_thrust_factor_ = forces
 
@@ -256,11 +258,11 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
 
                 # Finally, perform a weighted average of the four estimates.
                 # This is essentially Simpson's rule.
-                vel_rk4_x = (vel0[0] + 2*vel1[0] + 2*vel2[0] + vel3[0]) / 6
-                vel_rk4_y = (vel0[1] + 2*vel1[1] + 2*vel2[1] + vel3[1]) / 6
+                vel_rk4_x = (vel0[0] + 2.0*vel1[0] + 2.0*vel2[0] + vel3[0]) / 6.0
+                vel_rk4_y = (vel0[1] + 2.0*vel1[1] + 2.0*vel2[1] + vel3[1]) / 6.0
                 pos_rk4 = Coords(pos0[0] + dt * vel_rk4_x, pos0[1] + dt * vel_rk4_y)
-                acc_rk4_x = (acc1[0] + 2*acc2[0] + 2*acc3[0] + acc4[0]) / 6
-                acc_rk4_y = (acc1[1] + 2*acc2[1] + 2*acc3[1] + acc4[1]) / 6
+                acc_rk4_x = (acc1[0] + 2.0*acc2[0] + 2.0*acc3[0] + acc4[0]) / 6.0
+                acc_rk4_y = (acc1[1] + 2.0*acc2[1] + 2.0*acc3[1] + acc4[1]) / 6.0
                 vel_rk4 = Coords(vel0[0] + dt * acc_rk4_x, vel0[1] + dt * acc_rk4_y)
                 acc_rk4 = Coords(acc_rk4_x, acc_rk4_y)
 
@@ -269,14 +271,14 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
                 # stage separation events. For now, simply check for errors
                 # and fallback to euler integration.
                 acc_mag_ratio = magnitude(acceleration[0], acceleration[1]) / magnitude(acc_rk4[0], acc_rk4[1])
-                if abs(acc_mag_ratio - 1) < 0.02: # 2% tolerance
+                if abs(acc_mag_ratio - 1.0) < 0.02: # 2% tolerance
                     position[0] = pos_rk4[0]
                     position[1] = pos_rk4[1]
                     velocity[0] = vel_rk4[0]
                     velocity[1] = vel_rk4[1]
                     acceleration = acc_rk4
                 else:
-                    print(i + 1, timestep, round(time, 4), round(acc_mag_ratio, 6))
+                    pass #print(i + 1, timestep, round(time, 4), round(acc_mag_ratio, 6))
 
             # NOW mutably update prop after half-timestep
             telemetry.mass_prop_remaining -= prop_used
@@ -319,6 +321,7 @@ def run(stages: List[Stage], telemetries: List[Telemetry]) -> None:
 
     time_final = timelib.time()
     print('simulation time', time_final - time_initial)
+    return telemetries
 
 def score_telemetries(orbit: bool, telemetries: List[Telemetry]) -> float:
     # Only care about final stage for orbit check and delta_velocity
@@ -346,7 +349,7 @@ def score_telemetries(orbit: bool, telemetries: List[Telemetry]) -> float:
         else:
             # Divide by 100 so this is numerically smaller than the dV
             # required to achieve orbit.
-            return downranges[-1] / 100
+            return downranges[-1] / 100.0
 
     velocities = [magnitude(vx, vy) for vx, vy in telemetry.velocities]
     delta_velocity = max(velocities)

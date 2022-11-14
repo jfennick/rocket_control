@@ -62,7 +62,7 @@ pub mod mrockets {
         mass: 1600.0,
     };
 
-    pub fn superheavy(ctrls: Vec<Control>) -> Stage {
+    pub fn superheavy(ctrls: &Vec<Control>) -> Stage {
         let engs = vec![r2; 33];
         let massprop = 3400000.0;
         let burntime = get_burn_time(massprop, & engs);
@@ -82,7 +82,7 @@ pub mod mrockets {
         engines.to_vec()
     }
 
-    pub fn starship(ctrls: Vec<Control>) -> Stage {
+    pub fn starship(ctrls: &Vec<Control>) -> Stage {
         let engs = starship_engines();
         let massprop = 1200000.0;
         let burntime = get_burn_time(massprop, & engs);
@@ -101,12 +101,12 @@ pub mod mrockets {
     // Note that this dry mass estimate does not include any of the structural mass
     // necessary to actually connect the turbofans together and to the rocket, but
     // it also doesn't include any mass savings you would get by designing an
-    // optimized turbfon specifically for this application.
+    // optimized turbofan specifically for this application.
     pub fn num_fans() -> u32 {
         circle_packing_number(12) - circle_packing_number(4) // 360 = 397 - 37
     }
 
-    pub fn turbostage(ctrls: Vec<Control>) -> Stage {
+    pub fn turbostage(ctrls: &Vec<Control>) -> Stage {
         let engs = vec![turbofan_CF6; num_fans as usize];
         let massprop = 50000.0;
         let burntime = get_burn_time(massprop, & engs);
@@ -120,9 +120,9 @@ pub mod mrockets {
         }
     }
 
-    pub fn superheavy_t(ctrls: Vec<Control>) -> Stage {
+    pub fn superheavy_t(ctrls: &Vec<Control>) -> Stage {
         let engs = vec![r2; 33];
-        let massprop = superheavy(vec![]).mass_prop - turbostage(vec![]).mass_prop;
+        let massprop = superheavy(&vec![]).mass_prop - turbostage(&vec![]).mass_prop;
         let burntime = get_burn_time(massprop, & engs);
         Stage {
             mass_dry: 200000.0,
@@ -135,7 +135,7 @@ pub mod mrockets {
     }
 
     // In thrust we trust!
-    pub fn superheavy_a(ctrls: Vec<Control>) -> Stage {
+    pub fn superheavy_a(ctrls: &Vec<Control>) -> Stage {
         let engs = vec![r2; 33 + 25];
         let massprop = 2200000.0;
         let burntime = get_burn_time(massprop, & engs);
@@ -149,7 +149,7 @@ pub mod mrockets {
         }
     }
 
-    pub fn superheavy_b(ctrls: Vec<Control>) -> Stage {
+    pub fn superheavy_b(ctrls: &Vec<Control>) -> Stage {
         let engs = vec![r2; 30];
         let massprop = 1200000.0;
         let burntime = get_burn_time(massprop, & engs);
@@ -163,9 +163,9 @@ pub mod mrockets {
         }
     }
 
-    pub fn superheavy_a_t(ctrls: Vec<Control>) -> Stage {
+    pub fn superheavy_a_t(ctrls: &Vec<Control>) -> Stage {
         let engs = vec![r2; 33 + 25];
-        let massprop = superheavy_a(vec![]).mass_prop - turbostage(vec![]).mass_prop;
+        let massprop = superheavy_a(&vec![]).mass_prop - turbostage(&vec![]).mass_prop;
         let burntime = get_burn_time(massprop, & engs);
         Stage {
             mass_dry: 200000.0,

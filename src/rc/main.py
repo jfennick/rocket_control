@@ -55,9 +55,7 @@ def main() -> None:
 
     orbit = False # Has any solution reached orbit yet?
     for i in range(1, 1 + max_iters):
-        telemetries = params.get_initial_conditions(stages)
-
-        simulation.run(stages, telemetries)
+        telemetries = simulation.run(stages)
 
         score = simulation.score_telemetries(orbit, telemetries)
 
@@ -92,10 +90,10 @@ def main() -> None:
 
         # Perturb the controls for the next iteration
         for stage in stages:
-            stage.controls = perturb_controls_phi_random(stage.controls, 100, 1)
+            stage.controls = perturb_controls_phi_random(stage.controls, 100.0, 1)
         # Perturb the boostback burns for the next iteration
         for stage in stages[:-1]: # Exclude the last stage
-            delta_time = 1 + (random.random() * 2 - 1) / 1000
+            delta_time = 1.0 + (random.random() * 2.0 - 1.0) / 1000.0
             stage.burn_time *= delta_time
 
     plt.show()

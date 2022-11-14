@@ -10,6 +10,7 @@ pub mod mconstants {
     pub const tangental_velocity_earth: f64 =
         (radius_earth * 2.0 * std::f64::consts::PI) / (60.0 * 60.0 * 24.0); // 463.8 m/s
     pub const standard_pressure: f64 = 101325.0; // Pascal = N / m^2
+    pub const speed_of_sound: f64 = 343.0; // m/s
 
     // NOTE: The humble .sqrt() method is defined by cases (pos & neg), so
     // it cannot be used to define global constants; define the square instead.

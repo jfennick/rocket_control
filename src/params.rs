@@ -26,25 +26,27 @@ pub mod mparams {
         telems
     }
 
-    pub fn get_stage_sep_times(stages: Vec<Stage>) -> Vec<f64> {
+    pub fn get_stage_sep_times(stages: &Vec<Stage>) -> Vec<f64> {
         // , staging_delays: List[float]
         let stage_burn_times = stages.iter().map(|s| s.burn_time).collect::<Vec<_>>();
         let stage_sep_times = stage_burn_times
             .iter()
-            .scan(0.0, |tot, x| Some(*tot + x))
+            .scan(0.0, |tot, x| {*tot += x; Some(*tot)})
             .collect();
         stage_sep_times
     }
 
-    pub fn get_stage_time_intervals(stages: Vec<Stage>) -> Vec<(f64, f64)> {
+    pub fn get_stage_time_intervals(stages: &Vec<Stage>) -> Vec<(f64, f64)> {
         let stage_sep_times = get_stage_sep_times(stages);
-        let stage_sep_times_tail = &stage_sep_times[1..];
+        let stage_sep_times_tail = &stage_sep_times[1..]; // 1.. causes index out of bounds
         let zipped = stage_sep_times.iter().zip(stage_sep_times_tail.iter());
-        let stage_time_intervals = zipped.map(|(f1, f2)| (*f1, *f2)).collect();
-        stage_time_intervals
+        let stage_time_intervals: Vec<(f64, f64)> = zipped.map(|(f1, f2)| (*f1, *f2)).collect();
+        let mut stage_time_interval = vec![(0.0, stage_sep_times[0])];
+        stage_time_interval.extend(stage_time_intervals);
+        stage_time_interval
     }
 
-    pub fn get_downranges(telems: Vec<Telemetry>, times: &Vec<f64>) -> Vec<f64> {
+    pub fn get_downranges(telems: & Vec<Telemetry>, times: &Vec<f64>) -> Vec<f64> {
         let phis: Vec<f64> = telems
             .iter()
             .map(|t| cart2pol(t.position.x, t.position.y).1)

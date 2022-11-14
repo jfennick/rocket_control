@@ -45,12 +45,12 @@ pub mod mrkt_types {
     }
 
     #[derive(Debug, Clone)]
-    pub struct Stage {
+    pub struct Stage<'a> {
         pub mass_dry: f64,     // kg
         pub mass_payload: f64, // kg
         pub mass_prop: f64,    // kg
         pub engines: Vec<Engine>,
         pub burn_time: f64,         // sec
-        pub controls: Vec<Control>, // = []
+        pub controls: &'a Vec<Control>, // = []
     }
 }
