@@ -29,6 +29,9 @@ def force_drag(density: float, speed: float, drag_coefficient: float, cross_sect
     return 0.5 * density * (speed ** 2) * drag_coefficient * cross_sectional_area
 
 def barometric_density(altitude: float) -> float:
+    karman_line = 84852.0
+    if altitude > karman_line:
+        return 0.0
     # See https://en.wikipedia.org/wiki/Barometric_formula#Density_equations
     # altitude (m), density (kg/m^3), temperature (K), temperature lapse rate (K/m)
     piecewise_data = [(0.00000, 1.22500, 288.15, -0.0065),
@@ -38,7 +41,7 @@ def barometric_density(altitude: float) -> float:
                       (47000.0, 0.00143, 270.65, 0.0),
                       (51000.0, 0.00086, 270.65, -0.0028),
                       (71000.0, 0.000064, 214.65, -0.002),
-                      (84852.0, 0.00000, 000.00, 0.0)] # only altitude used here
+                      (karman_line, 0.00000, 000.00, 0.0)] # only altitude used here
     for d, d2 in zip(piecewise_data, piecewise_data[1:]):
         altitude_b: float = d[0]
         altitude_b2: float = d2[0]

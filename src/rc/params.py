@@ -34,8 +34,7 @@ def get_stage_time_intervals(stages: List[Stage]) -> List[Tuple[float, float]]:
     stage_time_intervals = list(zip(stage_sep_times, stage_sep_times[1:]))
     return stage_time_intervals
 
-def get_downranges(telemetry: Telemetry) -> List[float]:
-    phis = [cart2pol(pos[0], pos[1])[1] for pos in telemetry.positions]
+def get_downranges(phis: List[float]) -> List[float]:
     downranges = [(radius_earth * phi - tangental_velocity_earth * time) / 1000.0
                   for time, phi in zip(times, phis)] # Convert to km
     return downranges

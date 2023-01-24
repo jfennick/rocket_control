@@ -55,7 +55,9 @@ def initialize_plots(nrows: int, ncols: int) -> Tuple[matplotlib.pyplot.Figure, 
 
 def update_plots(fig: matplotlib.pyplot.Figure, axes2d: List[List[matplotlib.pyplot.Axes]],
                  controls: List[List[Control]],
-                 telemetries: List[Telemetry], stage_sep_times: List[float]) -> None:
+                 #telemetries: List[Telemetry],
+                 posx, posy, velx, vely, accx, accy, baro, pres,
+                 stage_sep_times: List[float]) -> None:
     """Update the previously initialized plots with the data from telemetries
 
     Args:
@@ -73,8 +75,10 @@ def update_plots(fig: matplotlib.pyplot.Figure, axes2d: List[List[matplotlib.pyp
         skip = int(len(nums) / max_nums)
         return nums if skip == 0 else [num for i, num in enumerate(nums) if i % skip == 0]
 
-    for i, telemetry in enumerate(telemetries):
-        pos_polar = [cart2pol(x, y) for x, y in telemetry.positions]
+    #for i, telemetry in enumerate(telemetries):
+    for i, _ in enumerate(posx):
+        #pos_polar = [cart2pol(x, y) for x, y in telemetry.positions]
+        pos_polar = [cart2pol(x, y) for x, y in zip(posx[i], posy[i])]
         altitudes = [(rho - radius_earth) / 1000.0 for rho, phi in pos_polar] # Convert to km
         times_alt = times[:len(altitudes)]
         ax = axes2d[i][0]
@@ -85,7 +89,8 @@ def update_plots(fig: matplotlib.pyplot.Figure, axes2d: List[List[matplotlib.pyp
         for sep_time in stage_sep_times[1:]:
             ax.vlines(sep_time, min(altitudes), max(altitudes), color='black')  # type: ignore
 
-        velocities = [magnitude(vx, vy) for vx, vy in telemetry.velocities]
+        #velocities = [magnitude(vx, vy) for vx, vy in telemetry.velocities]
+        velocities = [magnitude(vx, vy) for vx, vy in zip(velx[i], vely[i])]
         times_vel = times[:len(velocities)]
         ax = axes2d[i][1]
         ax.ticklabel_format(style='sci', scilimits=(-2,3), axis='both')  # type: ignore
@@ -96,7 +101,8 @@ def update_plots(fig: matplotlib.pyplot.Figure, axes2d: List[List[matplotlib.pyp
             ax.vlines(sep_time, min(velocities), max(velocities), color='black')  # type: ignore
 
         # Convert to multiple of little_g
-        accelerations = [magnitude(ax, ay) / little_g for ax, ay in telemetry.accelerations]
+        #accelerations = [magnitude(ax, ay) / little_g for ax, ay in telemetry.accelerations]
+        accelerations = [magnitude(ax, ay) / little_g for ax, ay in zip(accx[i], accy[i])]
         times_acc = times[:len(accelerations)]
         ax = axes2d[i][2]
         ax.ticklabel_format(style='sci', scilimits=(-2,3), axis='both')  # type: ignore
@@ -106,7 +112,8 @@ def update_plots(fig: matplotlib.pyplot.Figure, axes2d: List[List[matplotlib.pyp
         for sep_time in stage_sep_times[1:]:
             ax.vlines(sep_time, min(accelerations), max(accelerations), color='black')  # type: ignore
 
-        """densities = list(telemetry.barometric_densities)
+        """#densities = list(telemetry.barometric_densities)
+        densities = baro[i]
         times_den = times[:len(densities)]
         ax = axes2d[i][3]
         ax.ticklabel_format(style='sci', scilimits=(-2,3), axis='both')  # type: ignore
@@ -114,7 +121,7 @@ def update_plots(fig: matplotlib.pyplot.Figure, axes2d: List[List[matplotlib.pyp
         ax.set_xlabel('time (seconds)')
         ax.set_ylabel('density (kg/m^3)')
         for sep_time in stage_sep_times[1:]:
-            ax.vlines(sep_time, min(telemetry.barometric_densities), max(telemetry.barometric_densities),
+            ax.vlines(sep_time, min(densities), max(densities),
                       color='black')  # type: ignore"""
 
         control_phis = []
@@ -123,7 +130,8 @@ def update_plots(fig: matplotlib.pyplot.Figure, axes2d: List[List[matplotlib.pyp
             phi_deg = c.force_phi * (180 / math.pi)
             for j in range(num_steps_c):
                 control_phis.append(phi_deg)
-        control_phis = control_phis[:telemetry.positions.size]
+        #control_phis = control_phis[:telemetry.positions.size]
+        control_phis = control_phis[:len(posx[i])]
         times_den = times[:len(control_phis)]
         ax = axes2d[i][3]
         ax.ticklabel_format(style='sci', scilimits=(-2,3), axis='both')  # type: ignore
@@ -138,7 +146,8 @@ def update_plots(fig: matplotlib.pyplot.Figure, axes2d: List[List[matplotlib.pyp
             indexed_pressures.sort(key=lambda x: x[1])
             return indexed_pressures[-1][0]
 
-        pressures = list(telemetry.dynamic_pressures)
+        #pressures = list(telemetry.dynamic_pressures)
+        pressures = pres[i]
         times_pre = times[:len(pressures)]
         ax = axes2d[i][4]
         ax.ticklabel_format(style='sci', scilimits=(-2,3), axis='both')  # type: ignore
@@ -149,20 +158,25 @@ def update_plots(fig: matplotlib.pyplot.Figure, axes2d: List[List[matplotlib.pyp
             ax.vlines(sep_time, min(pressures), max(pressures), color='black')  # type: ignore
         # Plot maxQ
         maxq_time = find_maxq_time(times_pre, pressures)
-        ax.vlines(maxq_time, min(telemetry.dynamic_pressures), max(telemetry.dynamic_pressures),
+        ax.vlines(maxq_time, min(pressures), max(pressures),
                   color='red')  # type: ignore
 
         ax = axes2d[i][5]
         ax.ticklabel_format(style='sci', scilimits=(-2,3), axis='both')  # type: ignore
-        xs = [pos[0] for pos in telemetry.positions]
-        ys = [pos[1] for pos in telemetry.positions]
+        #xs = [pos[0] for pos in telemetry.positions]
+        xs = posx[i]
+        #ys = [pos[1] for pos in telemetry.positions]
+        ys = posy[i]
         ax.scatter(stride(xs), stride(ys), marker='o', s=(72./fig.dpi)**2)  # type: ignore
         ax.set_xlabel('x (meters)')
         ax.set_ylabel('y (meters)')
 
         ax = axes2d[i][6]
         ax.ticklabel_format(style='sci', scilimits=(-2,3), axis='both')  # type: ignore
-        downranges = get_downranges(telemetry)
+        #phis = [cart2pol(pos[0], pos[1])[1] for pos in telemetry.positions]
+        #phis = [cart2pol(x, y)[1] for x, y in zip(posx[i], posy[i])]
+        phis = [pol[1] for pol in pos_polar]
+        downranges = get_downranges(phis)
         ax.scatter(stride(downranges), stride(altitudes), marker='o', s=(72./fig.dpi)**2)  # type: ignore
         ax.set_xlabel('downrange (km)')
         ax.set_ylabel('altitude (km)')

@@ -14,6 +14,8 @@ from .rockets import (r2, starship, superheavy, turbostage, superheavy_t,
 from . import params
 from . import simulation
 
+import rocket_control as rc # Rust bindings (generated from `maturin develop`)
+
 def main() -> None:
     #print('acceleration due to gravity', little_g)
     #print('tangental velocity due to earth\'s rotation', tangental_velocity_earth)
@@ -52,6 +54,24 @@ def main() -> None:
     nrows: int = len(stages)
     ncols: int = 7
     (fig, axes2d) = plots.initialize_plots(nrows, ncols)
+
+    (result, controls) = rc.main()
+    posx = [[t.position.x for t in r] for r in result]
+    posy = [[t.position.y for t in r] for r in result]
+    velx = [[t.velocity.x for t in r] for r in result]
+    vely = [[t.velocity.y for t in r] for r in result]
+    accx = [[t.acceleration.x for t in r] for r in result]
+    accy = [[t.acceleration.y for t in r] for r in result]
+    baro = [[t.barometric_density for t in r] for r in result]
+    pres = [[t.dynamic_pressure for t in r] for r in result]
+    stage_sep_times = params.get_stage_sep_times(stages)
+    plots.update_plots(fig, axes2d, controls, posx, posy, velx, vely, accx, accy, baro, pres, stage_sep_times)
+    #plt.show()
+    plt.savefig('Plots.png')
+    import sys
+    sys.exit(0)
+    # TODO: Either finish synchronizing the python and rust code (i.e. for performance comparison)
+    # or eliminate the python simulation code and just use python for plotting.
 
     orbit = False # Has any solution reached orbit yet?
     for i in range(1, 1 + max_iters):

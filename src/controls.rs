@@ -89,4 +89,27 @@ pub mod mcontrols {
         controls.iter().enumerate().map(mkctrl).collect()
         //*new_controls
     }
+
+    pub fn perturb_controls_dt_random(controls: & Vec<Control>, scale: f64, index_min: i32, index_max: i32) -> Vec<Control> {
+        //let new_controls = &mut vec![];
+        //for (i, c) in controls.iter().enumerate() {
+        let mkctrl = |x:(usize, &Control)| {
+            let (i, c) = x;
+            // Skip controls out of bounds
+            if ! (index_min as usize <= i && i < index_max as usize) {
+                let new_control = Control{t1: c.t1, t2: c.t2, force_phi: c.force_phi, force_mag: c.force_mag};
+                //new_controls.push(new_control);
+                new_control
+            } else {
+                let mut rng = rand::thread_rng();
+                let y: f64 = rng.gen(); // generates a float between 0 and 1
+                let dt = (y * 2.0 - 1.0) * (c.t2 - c.t1) / scale;
+                let new_control = Control{t1: c.t1, t2: c.t2 + dt, force_phi: c.force_phi, force_mag: c.force_mag};
+                //new_controls.push(new_control);
+                new_control
+            }
+        };
+        reduce_times(&controls.iter().enumerate().map(mkctrl).collect())
+        //*new_controls
+    }
 }

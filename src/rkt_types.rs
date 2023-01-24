@@ -1,4 +1,5 @@
 pub mod mrkt_types {
+    use pyo3::pyclass;
 
     #[derive(Debug, Clone)]
     pub struct Engine {
@@ -8,18 +9,27 @@ pub mod mrkt_types {
         pub mass: f64,             // kg
     }
 
+    #[pyclass]
     #[derive(Debug, Clone)]
     pub struct Coords {
+        #[pyo3(get)]
         pub x: f64,
+        #[pyo3(get)]
         pub y: f64,
     }
 
+    #[pyclass]
     #[derive(Debug, Clone)]
     pub struct Telemetry {
+        #[pyo3(get)]
         pub position: Coords,
+        #[pyo3(get)]
         pub velocity: Coords,
+        #[pyo3(get)]
         pub acceleration: Coords,
+        #[pyo3(get)]
         pub barometric_density: f64,
+        #[pyo3(get)]
         pub dynamic_pressure: f64,
     }
 
@@ -34,13 +44,18 @@ pub mod mrkt_types {
         pub update: bool,
     }
 
+    #[pyclass]
     #[derive(Debug, Clone)]
     pub struct Control {
         // t1 < t2
+        #[pyo3(get)]
         pub t1: f64,
+        #[pyo3(get)]
         pub t2: f64,
         // In polar coordinates, this is the angle measured from vertical / radial
+        #[pyo3(get)]
         pub force_phi: f64,
+        #[pyo3(get)]
         pub force_mag: f64, // = 1.0
     }
 

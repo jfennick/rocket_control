@@ -1,14 +1,14 @@
 pub mod msimulation {
     use std::f64::consts::PI;
 
-    use crate::constants::mconstants::{tangental_velocity_earth, radius_earth, standard_pressure, speed_of_sound};
+    use crate::constants::mconstants::{tangental_velocity_earth, radius_earth, standard_pressure, speed_of_sound, big_G, mass_earth};
     use crate::params::mparams::{acceleration_limit, dt, num_timesteps, get_downranges, get_initial_conditions, get_stage_time_intervals};
     use crate::rockets::mrockets;
     use crate::rkt_types::mrkt_types::{Control, Coords, Stage, Telemetry};
     use crate::utils::mutils::{barometric_density, cart2pol, force_drag, force_gravity, pol2cart, magnitude};
 
     pub fn get_forces(mass_stages: f64, mass_prop_remaining: f64, i: usize, time: f64, stage: & Stage, controls: &mut Vec<Control>, controls_all: &mut Vec<Vec<Control>>,
-        pos_x: f64, pos_y: f64, vel_x: f64, vel_y: f64) -> [f64; 4] {
+        pos_x: f64, pos_y: f64, vel_x: f64, vel_y: f64, orbit: &mut Vec<bool>) -> [f64; 4] {
         let mass_curr = mass_stages + mass_prop_remaining;
         let (pos_rho, pos_phi) = cart2pol(pos_x, pos_y);
         let radius = magnitude(pos_x, pos_y);
@@ -16,10 +16,10 @@ pub mod msimulation {
         // The velocity of the atmosphere points
         // in the direction of the derivative of position, i.e. + PI / 2
         let phi = pos_phi + PI / 2.0;
-        let (x_comp, y_comp) = pol2cart(1.0, phi);
+        //let (x_comp, y_comp) = pol2cart(1.0, phi);
         let atmosphere_vel_phi = tangental_velocity_earth*(pos_rho/radius_earth);
-        let atm_vel_x = x_comp * atmosphere_vel_phi;
-        let atm_vel_y = y_comp * atmosphere_vel_phi;
+        let atm_vel_x = phi.cos() * atmosphere_vel_phi;
+        let atm_vel_y = phi.sin() * atmosphere_vel_phi;
         // NOTE: The speed used to calculate force_drag should be the NET
         // speed of the stage w.r.t. the atmosphere, NOT just the stage itself!
         // speed_stage = magnitude(vel_x, vel_y);
@@ -34,10 +34,10 @@ pub mod msimulation {
         // Force of gravity always points 'down',
         // in the opposite direction to position (in polar coordinates), i.e. - math.pi
         let phi = pos_phi - PI;
-        let (x_comp, y_comp) = pol2cart(1.0, phi);
+        //let (x_comp, y_comp) = pol2cart(1.0, phi);
         let force_gravity_mag = force_gravity(mass_curr, altitude);
-        let force_gravity_x = x_comp * force_gravity_mag;
-        let force_gravity_y = y_comp * force_gravity_mag;
+        let force_gravity_x = phi.cos() * force_gravity_mag;
+        let force_gravity_y = phi.sin() * force_gravity_mag;
 
         // Centripetal force always points 'up',
         // in the same direction to position (in polar coordinates)
@@ -60,9 +60,9 @@ pub mod msimulation {
         let mut forces_sum_x = force_gravity_x + force_drag_x;
         let mut forces_sum_y = force_gravity_y + force_drag_y;
 
-        let mut excess_thrust_factor = 1.0;
+        let mut thrust_factor = 0.0;
 
-        if mass_prop_remaining > 0.0 {
+        if mass_prop_remaining > 0.0 && !orbit[i] {
             // Update the control for the current stage, if necessary
             if !(controls[i].t1 <= time && time < controls[i].t2) {
                 for c in &controls_all[i] {
@@ -74,14 +74,15 @@ pub mod msimulation {
                     // TODO: Check that there is always a valid control.
                 }
             }
+            thrust_factor = controls[i].force_mag;
 
             let thrust_mag: f64 = stage.engines.iter().map(|e| e.dmdt * e.velocity_exhaust).sum();
             let thrust_mag = thrust_mag * controls[i].force_mag;
             // To find the thrust vector, add the position and control angles
             let phi = pos_phi + controls[i].force_phi;
-            let (x_comp, y_comp) = pol2cart(1.0, phi);
-            let mut thrust_x = x_comp * thrust_mag;
-            let mut thrust_y = y_comp * thrust_mag;
+            //let (x_comp, y_comp) = pol2cart(1.0, phi);
+            let mut thrust_x = phi.cos() * thrust_mag;
+            let mut thrust_y = phi.sin() * thrust_mag;
 
             //let forces_sum_mag = magnitude(forces_sum_rho, forces_sum_phi);
             // Include all forces, or just thrust? Let's just use thrust.
@@ -89,20 +90,20 @@ pub mod msimulation {
             // and the acceleration near maxQ is nowhere near this limit.
             let acceleration_mag = thrust_mag / mass_curr;
 
-            //excess_thrust_factor = 1.0;
+            //thrust_factor = 1.0;
             if acceleration_mag > acceleration_limit {
                 let excess_thrust = (acceleration_mag - acceleration_limit) * mass_curr;
-                excess_thrust_factor = (thrust_mag - excess_thrust) / thrust_mag;
+                thrust_factor = (thrust_mag - excess_thrust) / thrust_mag;
                 thrust_x = thrust_x * acceleration_limit / acceleration_mag;
                 thrust_y = thrust_y * acceleration_limit / acceleration_mag;
             }
             forces_sum_x += thrust_x;
             forces_sum_y += thrust_y;
         }
-        return [forces_sum_x, forces_sum_y, force_drag_mag, excess_thrust_factor];
+        return [forces_sum_x, forces_sum_y, force_drag_mag, thrust_factor];
     }
 
-    pub fn run(stages: &Vec<Stage>, controls: &mut Vec<Control>, controls_all: &mut Vec<Vec<Control>>) -> Vec<Vec<Telemetry>> {
+    pub fn run(stages: &Vec<Stage>, controls: &mut Vec<Control>, controls_all: &mut Vec<Vec<Control>>, short_circuit: bool) -> (Vec<Vec<Telemetry>>, Vec<f64>) {
         let now = std::time::Instant::now();
 
         // Initialization
@@ -110,6 +111,7 @@ pub mod msimulation {
 
         let mut mass_prop_remaining: Vec<f64> = stages.iter().map(|s| s.mass_prop).collect();
         let mut update_telemetry: Vec<bool> = stages.iter().map(|s| true).collect();
+        let mut orbit: &mut Vec<bool> = &mut stages.iter().map(|s| false).collect();
         let mut telemetries: &mut Vec<Vec<Telemetry>> = &mut stages.iter().map(|s| get_initial_conditions()).collect();
 
         for timestep in 0..(num_timesteps - 1) {
@@ -129,10 +131,11 @@ pub mod msimulation {
                 if !update_telemetry[i] {
                     continue
                 }
+                let telemetry_timestep = &telemetry[timestep];
 
                 // copy so we can mutably update @ half-step
-                let pos0 = telemetry[timestep].position.clone();
-                let vel0 = telemetry[timestep].velocity.clone();
+                let pos0 = telemetry_timestep.position.clone();
+                let vel0 = telemetry_timestep.velocity.clone();
 
                 //println!("timestep {:?} stage {:?}", timestep, i);
                 // This is the total mass of all the (remaining) stages,
@@ -143,18 +146,18 @@ pub mod msimulation {
                 }
                 let mass_curr = mass_stages + mass_prop_remaining[i];
 
-                let forces = get_forces(mass_stages, mass_prop_remaining[i], i, time, stage, controls, controls_all, pos0.x, pos0.y, vel0.x, vel0.y);
-                let [forces_sum_x, forces_sum_y, force_drag_mag, excess_thrust_factor] = forces;
+                let forces = get_forces(mass_stages, mass_prop_remaining[i], i, time, stage, controls, controls_all, pos0.x, pos0.y, vel0.x, vel0.y, orbit);
+                let [forces_sum_x, forces_sum_y, force_drag_mag, thrust_factor] = forces;
 
-                let prop_used = stage.engines.iter().map(|e| e.dmdt).sum::<f64>() * dt * excess_thrust_factor;
+                let prop_used = stage.engines.iter().map(|e| e.dmdt).sum::<f64>() * dt * thrust_factor;
 
                 // Determine acceleration
                 let a_x = forces_sum_x / mass_curr;
                 let a_y = forces_sum_y / mass_curr;
                 let acc1 = Coords{x: a_x, y: a_y}; // using pos0, vel0
     
-                let mut position = telemetry[timestep].position.clone();
-                let mut velocity = telemetry[timestep].velocity.clone();
+                let mut position = telemetry_timestep.position.clone();
+                let mut velocity = telemetry_timestep.velocity.clone();
 
                 let h = dt;
                 position.x += h * velocity.x;
@@ -175,8 +178,8 @@ pub mod msimulation {
                     // position, velocity, and mass_prop args (and time, if it matters)
     
                     // copy so we can mutably update @ half-step
-                    let mut pos1 = telemetry[timestep].position.clone();
-                    vel1 = telemetry[timestep].velocity.clone();
+                    let mut pos1 = telemetry_timestep.position.clone();
+                    vel1 = telemetry_timestep.velocity.clone();
                     let h = dt / 2.0;
                     pos1.x += h * vel1.x;
                     pos1.x += h * vel1.y;
@@ -186,8 +189,8 @@ pub mod msimulation {
     
                     let mass_curr = mass_stages + mass_prop_remaining[i] - prop_used / 2.0;
                     let forces = get_forces(mass_stages, mass_prop_remaining[i] - prop_used / 2.0,
-                                           i, time + h, stage, controls, controls_all, pos1.x, pos1.y, vel1.x, vel1.y);
-                    let [forces_sum_x, forces_sum_y, force_drag_mag_, excess_thrust_factor_] = forces;
+                                           i, time + h, stage, controls, controls_all, pos1.x, pos1.y, vel1.x, vel1.y, orbit);
+                    let [forces_sum_x, forces_sum_y, force_drag_mag_, thrust_factor_] = forces;
     
                     // Determine acceleration
                     let a_x = forces_sum_x / mass_curr;
@@ -200,8 +203,8 @@ pub mod msimulation {
                     // and fallback to euler integration.
                     let acc_mag_ratio = magnitude(acceleration.x, acceleration.y) / magnitude(acc2.x, acc2.y);
                     if (acc_mag_ratio - 1.0).abs() < 0.02 { // 2% tolerance
-                        position = telemetry[timestep].position.clone();
-                        velocity = telemetry[timestep].velocity.clone();
+                        position = telemetry_timestep.position.clone();
+                        velocity = telemetry_timestep.velocity.clone();
     
                         let h = dt;
                         position.x += h * velocity.x;
@@ -223,8 +226,8 @@ pub mod msimulation {
                     // position, velocity, and mass_prop args (and time, if it matters)
     
                     // copy so we can mutably update @ half-step
-                    let mut pos2 = telemetry[timestep].position.clone();
-                    let mut vel2 = telemetry[timestep].velocity.clone();
+                    let mut pos2 = telemetry_timestep.position.clone();
+                    let mut vel2 = telemetry_timestep.velocity.clone();
     
                     // Estimate half-timestep velocities, positions using the Euler method.
                     let h = dt / 2.0;
@@ -236,8 +239,8 @@ pub mod msimulation {
     
                     let mass_curr = mass_stages + mass_prop_remaining[i] - prop_used / 2.0;
                     let forces = get_forces(mass_stages, mass_prop_remaining[i] - prop_used / 2.0,
-                                           i, time + h, stage, controls, controls_all, pos2.x, pos2.y, vel2.x, vel2.y);
-                    let [forces_sum_x, forces_sum_y, force_drag_mag_, excess_thrust_factor_] = forces;
+                                           i, time + h, stage, controls, controls_all, pos2.x, pos2.y, vel2.x, vel2.y, orbit);
+                    let [forces_sum_x, forces_sum_y, force_drag_mag_, thrust_factor_] = forces;
     
                     // Determine acceleration
                     let a_x = forces_sum_x / mass_curr;
@@ -245,8 +248,8 @@ pub mod msimulation {
                     let acc3 = Coords{x: a_x, y: a_y}; // using pos2, vel2
     
                     // copy so we can mutably update @ next step
-                    let mut pos3 = telemetry[timestep].position.clone();
-                    let mut vel3 = telemetry[timestep].velocity.clone();
+                    let mut pos3 = telemetry_timestep.position.clone();
+                    let mut vel3 = telemetry_timestep.velocity.clone();
     
                     // Estimate next timestep velocities, positions using the Euler method.
                     let h = dt;
@@ -258,8 +261,8 @@ pub mod msimulation {
     
                     let mass_curr = mass_stages + mass_prop_remaining[i] - prop_used;
                     let forces = get_forces(mass_stages, mass_prop_remaining[i] - prop_used,
-                                           i, time + h, stage, controls, controls_all, pos3.x, pos3.y, vel3.x, vel3.y);
-                    let [forces_sum_x, forces_sum_y, force_drag_mag_, excess_thrust_factor_] = forces;
+                                           i, time + h, stage, controls, controls_all, pos3.x, pos3.y, vel3.x, vel3.y, orbit);
+                    let [forces_sum_x, forces_sum_y, force_drag_mag_, thrust_factor_] = forces;
     
                     // Determine acceleration
                     let a_x = forces_sum_x / mass_curr;
@@ -293,8 +296,29 @@ pub mod msimulation {
                 }
 
                 // NOW mutably update prop after half-timestep
-                mass_prop_remaining[i] -= prop_used;
+                if !orbit[i] {
+                    mass_prop_remaining[i] -= prop_used;
+                }
     
+                // Orbital mechanics
+                // https://en.wikipedia.org/wiki/Vis-viva_equation
+                let v2 = velocity.x * velocity.x + velocity.y * velocity.y;
+                let mu = big_G * mass_earth;
+                let semi_major_a = 1.0 / (2.0 / magnitude(position.x, position.y) - v2 / mu);
+                // https://en.wikipedia.org/wiki/Semi-major_and_semi-minor_axes
+                let specific_angular_momentum_h = position.x * velocity.y - position.y * velocity.x;
+                let eccentricity_squared = 1.0 - specific_angular_momentum_h.powi(2) / (semi_major_a * mu);
+                //let semi_minor_b = semi_major_a * (eccentricity_squared - 1.0).sqrt(); // hyperbola
+                //let semi_minor_b = semi_major_a * (1.0 - eccentricity_squared).sqrt(); // ellipse
+                let perihelion = semi_major_a * (1.0 - eccentricity_squared.sqrt());
+                //let apohelion = semi_major_a * (1.0 + eccentricity_squared.sqrt());
+
+                let perihelion_nominal = 200000.0;
+                if perihelion > radius_earth + perihelion_nominal && !orbit[i] {
+                    orbit[i] = true; // We achieved orbit!
+                    //println!("a {:?} b {:?} e {:?}", (semi_major_a - radius_earth) / 1000.0, (semi_minor_b - radius_earth) / 1000.0, eccentricity_squared.sqrt());
+                }
+
                 // Before stage separation i, stages >= i move together, so
                 // overwrite the telemetries for stages >= i identically here.
                 let telem_indices = if time < t2 {(i..stages.len()).collect()} else {vec![i]};
@@ -303,8 +327,8 @@ pub mod msimulation {
                     let altitude = radius - radius_earth;
                     if !update_telemetry[idx] {
                         // pass
-                    } else if altitude < 0.0 {
-                        // We either landed or crashed into the dirt.
+                    } else if altitude < 0.0 || (orbit[i] && short_circuit) {
+                        // We either landed or crashed into the dirt, or we achieved orbit.
                         telemetries[idx] = telemetries[idx][0..timestep].to_vec();
                         update_telemetry[idx] = false;
                     } else {
@@ -330,29 +354,64 @@ pub mod msimulation {
         }
 
         let elapsed_time = now.elapsed();
-        println!("simulation time {} milliseconds.", elapsed_time.as_millis());
-        telemetries.to_vec()
+        //println!("simulation time {} milliseconds.", elapsed_time.as_millis());
+        (telemetries.to_vec(), mass_prop_remaining)
     }
 
     pub fn my_last(lst: Vec<f64>) -> f64 {
         return lst[lst.len()-1];
     }
 
-    pub fn score_telemetries(orbit: bool, telemetries: & Vec<Vec<Telemetry>>, times: &Vec<f64>) -> f64 {
+    pub fn phi_pos(phi: f64) -> f64 {
+        if phi >= 0.0 {
+            return phi
+        } else {
+            return phi + PI
+        }
+    }
+
+    pub fn score_telemetries(orbit: bool, telemetries: & Vec<Vec<Telemetry>>, times: &Vec<f64>, mass_prop_remaining: &Vec<f64>, i: i32) -> f64 {
         // Only care about final stage for orbit check and delta_velocity
         let telemetry = &telemetries[telemetries.len()-1];
 
-        let downranges: Vec<f64> = telemetries.iter().map(|t| my_last(get_downranges(t, times))).collect();
+        //let downranges: Vec<f64> = telemetries.iter().map(|t| my_last(get_downranges(t, times))).collect();
+        let mut downranges = vec![];
+        for telems in telemetries.iter() {
+            let phis: Vec<f64> = telems
+            .iter()
+            .map(|t| phi_pos(cart2pol(t.position.x, t.position.y).1))
+            .collect();
+            downranges.push(my_last(get_downranges(&phis, times)));
+        }
 
         // NOTE: The various score components will in general have different units.
         // This is okay!
         // NOTE: Use absolute value here instead of squaring the residual; otherwise,
         // the return-to-launch-site penalty can outweigh the dV to orbit!
         // Only care about initial stages for rtls penalty
-        let rtls_penalty: f64 = downranges[0..downranges.len()-1].iter().map(|d| d.abs()).sum();
+        let rtls_penalty_distance: f64 = downranges[0..downranges.len()-1].iter().map(|d| d.abs().powi(2)).sum();
+
+        // Orbital mechanics
+        // https://en.wikipedia.org/wiki/Vis-viva_equation
+        let position = telemetry[telemetry.len()-1].position.clone();
+        let velocity = telemetry[telemetry.len()-1].velocity.clone();
+        let v2 = velocity.x * velocity.x + velocity.y * velocity.y;
+        let mu = big_G * mass_earth;
+        let semi_major_a = 1.0 / (2.0 / magnitude(position.x, position.y) - v2 / mu);
+        // https://en.wikipedia.org/wiki/Semi-major_and_semi-minor_axes
+        let specific_angular_momentum_h = position.x * velocity.y - position.y * velocity.x;
+        let eccentricity_squared = 1.0 - specific_angular_momentum_h.powi(2) / (semi_major_a * mu);
+        let perihelion = semi_major_a * (1.0 - eccentricity_squared.sqrt());
+        let apohelion = semi_major_a * (1.0 + eccentricity_squared.sqrt());
+
+        // Nominal parking orbit 200km x 200km
+        let perihelion_nominal = 200000.0;
+        let apohelion_nominal = 200000.0;
+        let eccentricity_nominal = (apohelion_nominal - perihelion_nominal) / (apohelion_nominal + perihelion_nominal);
 
         // Check if we failed to reach orbit
-        if telemetry.len() < num_timesteps {
+        //if telemetry.len() < num_timesteps {
+        if perihelion > radius_earth + perihelion_nominal {
             // If we have not reached orbit yet,
             // we do NOT want discontinuities in the objective function, because
             // that will cause an 'activity cliff' and prevent the algorithm from
@@ -367,11 +426,25 @@ pub mod msimulation {
                 return downranges[downranges.len()-1] / 100.0;
             }
         }
+
+        let penalty_eccentricity = (10000.0 * (eccentricity_squared.sqrt() - eccentricity_nominal)).powi(2);
+        let mut ifactor;
+        if i < 1000 {
+            ifactor = 0.001;
+        } else {
+            ifactor = 0.1;
+        }
+        let penalty_peri = ((perihelion - perihelion_nominal) * ifactor / 1000.0).powi(2);
+        let penalty_apo = ((apohelion - apohelion_nominal) * ifactor / 1000.0).powi(2);
+
         let velocities: Vec<f64> = (0..telemetry.len()-1).map(|i| magnitude(telemetry[i].velocity.x, telemetry[i].velocity.y)).collect();
         //let delta_velocity = velocities.iter().max();
         let delta_velocity = velocities.into_iter().max_by(|a, b| a.partial_cmp(b).unwrap());
 
-        let score = delta_velocity.unwrap() - rtls_penalty;
+        let mass_to_orbit = mass_prop_remaining[mass_prop_remaining.len()-1];
+        let rtls_penalty_mass: f64 = (0..mass_prop_remaining.len()-1).map(|m| (m as f64).abs()).sum();
+
+        let score = mass_to_orbit + delta_velocity.unwrap() - 10.0 * rtls_penalty_distance - 0.1 * rtls_penalty_mass - penalty_eccentricity; // - penalty_peri - penalty_apo;
         return score;
     }
 }

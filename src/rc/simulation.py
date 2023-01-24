@@ -327,7 +327,13 @@ def score_telemetries(orbit: bool, telemetries: List[Telemetry]) -> float:
     # Only care about final stage for orbit check and delta_velocity
     telemetry = telemetries[-1]
 
-    downranges = [get_downranges(telemetry)[-1] for telemetry in telemetries]
+    def phis_pos(phi: float) -> float:
+        return phi if phi >= 0 else phi + math.pi
+
+    downranges = []
+    for telemetry in telemetries:
+        phis = [phis_pos(cart2pol(pos[0], pos[1])[1]) for pos in telemetry.positions]
+        downranges.append(get_downranges(phis)[-1])
 
     # NOTE: The various score components will in general have different units.
     # This is okay!

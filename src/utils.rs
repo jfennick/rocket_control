@@ -50,6 +50,10 @@ pub mod mutils {
     }
 
     pub fn barometric_density(altitude: f64) -> f64 {
+        let karman_line = 84852.0;
+        if altitude > karman_line {
+            return 0.0; // If we are already in space
+        }
         // See https://en.wikipedia.org/wiki/Barometric_formula#Density_equations
         // altitude (m), density (kg/m^3), temperature (K), temperature lapse rate (K/m)
         let piecewise_data = vec![
@@ -60,7 +64,7 @@ pub mod mutils {
             (47000.0, 0.00143, 270.65, 0.0),
             (51000.0, 0.00086, 270.65, -0.0028),
             (71000.0, 0.000064, 214.65, -0.002),
-            (84852.0, 0.00000, 000.00, 0.0),
+            (karman_line, 0.00000, 000.00, 0.0),
         ]; // only altitude used here
         let piecewise_tail = &piecewise_data[1..];
         let zipped = piecewise_data.iter().zip(piecewise_tail.iter());

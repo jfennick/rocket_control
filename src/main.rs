@@ -82,10 +82,11 @@ fn main() {
     let controls: &mut Vec<Control> = &mut stages.iter().map(|s| s.controls[0].clone()).collect();
     let mut controls_all: &mut Vec<Vec<Control>>  = &mut stages.iter().map(|s| s.controls.clone()).collect();
     let mut controls_all_copy = &mut controls_all.clone();
+    let mut short_circuit = true; // ~4X performance improvement
 
     for i in 0..max_iters {
-        let telemetries = run(&stages, controls, controls_all);
-        let score = score_telemetries(orbit, &telemetries, &times);
+        let (telemetries, mass_prop_remaining) = run(&stages, controls, controls_all, short_circuit);
+        let score = score_telemetries(orbit, &telemetries, &times, &mass_prop_remaining, i);
 
         // Did we just reach orbit?
         let telemetry = &telemetries[telemetries.len()-1];

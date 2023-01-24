@@ -46,11 +46,7 @@ pub mod mparams {
         stage_time_interval
     }
 
-    pub fn get_downranges(telems: & Vec<Telemetry>, times: &Vec<f64>) -> Vec<f64> {
-        let phis: Vec<f64> = telems
-            .iter()
-            .map(|t| cart2pol(t.position.x, t.position.y).1)
-            .collect();
+    pub fn get_downranges(phis: &Vec<f64>, times: &Vec<f64>) -> Vec<f64> {
         let zipped = times.iter().zip(phis.iter());
         let downranges = zipped
             .map(|(time, phi)| (radius_earth * phi - tangental_velocity_earth * time) / 1000.0)
