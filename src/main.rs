@@ -125,8 +125,8 @@ fn main() {
 
         // Perturb the boostback burns for the next iteration
         for stage in stages[0..stages.len()-1].to_vec() { // Exclude the last stage
-            let mut rng = rand::thread_rng();
-            let y: f64 = rng.gen(); // generates a float between 0 and 1
+            let mut rng = rand::rng();
+            let y: f64 = rng.random(); // generates a float between 0 and 1
             let delta_time = 1.0 + (y * 2.0 - 1.0) / 1000.0;
             //stage.burn_time *= delta_time
         }

@@ -132,8 +132,8 @@ fn main() -> PyResult<(Vec<Vec<Telemetry>>, Vec<Vec<Control>>)> {
 
         // Perturb the controls for the next iteration
         for j in 0..controls_all.len()-1 {
-            let mut rng = rand::thread_rng();
-            let frac: f64 = rng.gen(); // generates a float between 0 and 1
+            let mut rng = rand::rng();
+            let frac: f64 = rng.random(); // generates a float between 0 and 1
             let index = (frac * controls_all[j].len() as f64) as i32;
             if i < 1000 {
                 scale_factor = 10.0; // 100.0
@@ -147,8 +147,8 @@ fn main() -> PyResult<(Vec<Vec<Telemetry>>, Vec<Vec<Control>>)> {
 
         // Perturb the boostback burns for the next iteration
         for stage in stages[0..stages.len()-1].to_vec() { // Exclude the last stage
-            let mut rng = rand::thread_rng();
-            let y: f64 = rng.gen(); // generates a float between 0 and 1
+            let mut rng = rand::rng();
+            let y: f64 = rng.random(); // generates a float between 0 and 1
             let delta_time = 1.0 + (y * 2.0 - 1.0) / 1000.0;
             //stage.burn_time *= delta_time
         }
@@ -158,7 +158,7 @@ fn main() -> PyResult<(Vec<Vec<Telemetry>>, Vec<Vec<Control>>)> {
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn rocket_control(_py: Python, m: &PyModule) -> PyResult<()> {
+fn rocket_control(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(main, m)?)?;
     //m.add_class::<Coords>()?;
     Ok(())

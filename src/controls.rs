@@ -78,8 +78,8 @@ pub mod mcontrols {
                 //new_controls.push(new_control);
                 new_control
             } else {
-                let mut rng = rand::thread_rng();
-                let y: f64 = rng.gen(); // generates a float between 0 and 1
+                let mut rng = rand::rng();
+                let y: f64 = rng.random(); // generates a float between 0 and 1
                 let delta_phi = (y * 2.0 - 1.0) * (PI / 2.0) / scale;
                 let new_control = Control{t1: c.t1, t2: c.t2, force_phi: c.force_phi + delta_phi, force_mag: c.force_mag};
                 //new_controls.push(new_control);
@@ -101,8 +101,8 @@ pub mod mcontrols {
                 //new_controls.push(new_control);
                 new_control
             } else {
-                let mut rng = rand::thread_rng();
-                let y: f64 = rng.gen(); // generates a float between 0 and 1
+                let mut rng = rand::rng();
+                let y: f64 = rng.random(); // generates a float between 0 and 1
                 let dt = (y * 2.0 - 1.0) * (c.t2 - c.t1) / scale;
                 let new_control = Control{t1: c.t1, t2: c.t2 + dt, force_phi: c.force_phi, force_mag: c.force_mag};
                 //new_controls.push(new_control);

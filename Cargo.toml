@@ -10,8 +10,8 @@ name = "rocket_control"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.17.1", features = ["extension-module"] }
-rand = "*"
+pyo3 = { version = "0.30", features = ["extension-module"] }
+rand = "0.10"
 # cute
 # soak
 
